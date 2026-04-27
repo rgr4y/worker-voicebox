@@ -37,11 +37,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     libsndfile1 \
     ffmpeg \
     curl \
+    git
     sox \
     zsh \
-    eza \
-    git \
-    && rm -rf /var/lib/apt/lists/*
+    eza && rm -rf /var/lib/apt/lists/*
 
 # --- Dependencies stage (cached layer) ---
 FROM base AS deps
