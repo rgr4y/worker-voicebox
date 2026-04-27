@@ -37,7 +37,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     libsndfile1 \
     ffmpeg \
     curl \
-    git
+    git \
     sox \
     zsh \
     eza && rm -rf /var/lib/apt/lists/*
