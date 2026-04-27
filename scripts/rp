@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+[[ -f "$SCRIPT_DIR/../.env" ]] && source "$SCRIPT_DIR/../.env"
+
+: "${RUNPOD_API_KEY:?Set RUNPOD_API_KEY in .env or environment}"
+: "${RUNPOD_ENDPOINT:?Set RUNPOD_ENDPOINT in .env or environment}"
+
+BASE="https://api.runpod.ai/v2/${RUNPOD_ENDPOINT}"
+MODEL=""
+
+_curl() {
+  curl -sS -H "Authorization: Bearer ${RUNPOD_API_KEY}" -H "Content-Type: application/json" "$@"
+}
+
+cmd_run() {
+  local prompt="$*"
+  [[ -z "$prompt" ]] && { echo "Usage: rp run <prompt>" >&2; exit 1; }
+  _curl -X POST "${BASE}/run" -d "$(jq -n --arg p "$prompt" '{input:{prompt:$p}}')"
+}
+
+cmd_runsync() {
+  local prompt="$*"
+  [[ -z "$prompt" ]] && { echo "Usage: rp sync <prompt>" >&2; exit 1; }
+  _curl -X POST "${BASE}/runsync" -d "$(jq -n --arg p "$prompt" '{input:{prompt:$p}}')"
+}
+
+cmd_chat() {
+  local msg="$*"
+  [[ -z "$msg" ]] && { echo "Usage: rp chat <message>" >&2; exit 1; }
+  local resp
+  resp=$(_curl -X POST "${BASE}/runsync" -d "$(jq -n --arg mo "$MODEL" --arg m "$msg" '{
+    input: {
+      openai_route: "/v1/chat/completions",
+      openai_input: {
+        model: $mo,
+        messages: [{role:"user", content:$m}],
+        max_tokens: 1024
+      }
+    }
+  }')")
+  local content exec_ms tokens tps
+  content=$(echo "$resp" | jq -r 'if .output | type == "array" then .output[-1].choices[0].message.content elif .output.choices then .output.choices[0].message.content else .output // . end')
+  exec_ms=$(echo "$resp" | jq -r '.executionTime // 0')
+  tokens=$(echo "$resp" | jq -r 'if .output | type == "array" then .output[-1].usage.completion_tokens elif .output.usage then .output.usage.completion_tokens else 0 end // 0')
+  echo "$content"
+  if [[ "$tokens" -gt 0 && "$exec_ms" -gt 0 ]]; then
+    tps=$(echo "scale=1; $tokens / ($exec_ms / 1000)" | bc)
+    printf '\033[2m%s tokens in %sms • %s tok/s\033[0m\n' "$tokens" "$exec_ms" "$tps"
+  fi
+}
+
+cmd_status() {
+  local job_id="$1"
+  [[ -z "$job_id" ]] && { echo "Usage: rp status <job_id>" >&2; exit 1; }
+  _curl "${BASE}/status/${job_id}"
+}
+
+cmd_wait() {
+  local job_id="$1"
+  [[ -z "$job_id" ]] && { echo "Usage: rp wait <job_id>" >&2; exit 1; }
+  while true; do
+    local result
+    result=$(_curl "${BASE}/status/${job_id}")
+    local status
+    status=$(echo "$result" | jq -r '.status')
+    case "$status" in
+      COMPLETED) echo "$result" | jq '.output'; return 0 ;;
+      FAILED)    echo "$result" | jq '.' >&2; return 1 ;;
+      *)         printf "\r%s..." "$status" >&2; sleep 2 ;;
+    esac
+  done
+}
+
+cmd_health() {
+  _curl "${BASE}/health"
+}
+
+cmd_purge() {
+  _curl -X POST "${BASE}/purge-queue"
+  echo ""
+  echo "Queue purged"
+}
+
+cmd_help() {
+  cat <<'HELP'
+Usage: rp <command> [args]
+
+Commands:
+  run <prompt>      Async request, returns job ID
+  sync <prompt>     Sync request, waits for response
+  chat <message>    OpenAI chat completions (sync)
+  status <job_id>   Check job status
+  wait <job_id>     Poll until job completes
+  health            Endpoint health/worker status
+  purge             Clear job queue
+
+Env: RUNPOD_API_KEY, RUNPOD_ENDPOINT (from .env or environment)
+HELP
+}
+
+cmd="${1:-help}"
+shift 2>/dev/null || true
+
+case "$cmd" in
+  run)    cmd_run "$@" ;;
+  sync)   cmd_runsync "$@" ;;
+  chat)   cmd_chat "$@" ;;
+  status) cmd_status "$@" ;;
+  wait)   cmd_wait "$@" ;;
+  health) cmd_health ;;
+  purge)  cmd_purge ;;
+  help|-h|--help) cmd_help ;;
+  *)      echo "Unknown command: $cmd" >&2; cmd_help; exit 1 ;;
+esac

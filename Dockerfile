@@ -65,6 +65,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 # --- Runtime stage ---
 FROM base AS runtime
+WORKDIR /app
 
 COPY --from=deps /opt/venv /opt/venv
 COPY backend/ /app/backend/
