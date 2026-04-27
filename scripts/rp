@@ -8,62 +8,47 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 : "${RUNPOD_ENDPOINT:?Set RUNPOD_ENDPOINT in .env or environment}"
 
 BASE="https://api.runpod.ai/v2/${RUNPOD_ENDPOINT}"
-MODEL=""
 
 _curl() {
   curl -sS -H "Authorization: Bearer ${RUNPOD_API_KEY}" -H "Content-Type: application/json" "$@"
 }
 
-cmd_run() {
-  local prompt="$*"
-  [[ -z "$prompt" ]] && { echo "Usage: rp run <prompt>" >&2; exit 1; }
-  _curl -X POST "${BASE}/run" -d "$(jq -n --arg p "$prompt" '{input:{prompt:$p}}')"
-}
+_rp_call() {
+  local mode="$1" method="$2" path="$3"
+  shift 3
+  local body="$*"
 
-cmd_runsync() {
-  local prompt="$*"
-  [[ -z "$prompt" ]] && { echo "Usage: rp sync <prompt>" >&2; exit 1; }
-  _curl -X POST "${BASE}/runsync" -d "$(jq -n --arg p "$prompt" '{input:{prompt:$p}}')"
-}
-
-cmd_chat() {
-  local msg="$*"
-  [[ -z "$msg" ]] && { echo "Usage: rp chat <message>" >&2; exit 1; }
-  local resp
-  resp=$(_curl -X POST "${BASE}/runsync" -d "$(jq -n --arg mo "$MODEL" --arg m "$msg" '{
-    input: {
-      openai_route: "/v1/chat/completions",
-      openai_input: {
-        model: $mo,
-        messages: [{role:"user", content:$m}],
-        max_tokens: 1024
-      }
-    }
-  }')")
-  local content exec_ms tokens tps
-  content=$(echo "$resp" | jq -r 'if .output | type == "array" then .output[-1].choices[0].message.content elif .output.choices then .output.choices[0].message.content else .output // . end')
-  exec_ms=$(echo "$resp" | jq -r '.executionTime // 0')
-  tokens=$(echo "$resp" | jq -r 'if .output | type == "array" then .output[-1].usage.completion_tokens elif .output.usage then .output.usage.completion_tokens else 0 end // 0')
-  echo "$content"
-  if [[ "$tokens" -gt 0 && "$exec_ms" -gt 0 ]]; then
-    tps=$(echo "scale=1; $tokens / ($exec_ms / 1000)" | bc)
-    printf '\033[2m%s tokens in %sms • %s tok/s\033[0m\n' "$tokens" "$exec_ms" "$tps"
+  local payload
+  if [[ -n "$body" ]]; then
+    payload=$(jq -n --arg m "$method" --arg p "$path" --argjson b "$body" \
+      '{input:{method:$m, path:$p, body:$b}}')
+  else
+    payload=$(jq -n --arg m "$method" --arg p "$path" \
+      '{input:{method:$m, path:$p}}')
   fi
+
+  _curl -X POST "${BASE}/${mode}" -d "$payload"
+}
+
+_sync()  { _rp_call runsync "$@"; }
+_async() { _rp_call run "$@"; }
+
+# --- RunPod infrastructure commands ---
+
+cmd_health() {
+  _curl "${BASE}/health"
 }
 
 cmd_status() {
-  local job_id="$1"
-  [[ -z "$job_id" ]] && { echo "Usage: rp status <job_id>" >&2; exit 1; }
+  local job_id="${1:?Usage: rp status <job_id>}"
   _curl "${BASE}/status/${job_id}"
 }
 
 cmd_wait() {
-  local job_id="$1"
-  [[ -z "$job_id" ]] && { echo "Usage: rp wait <job_id>" >&2; exit 1; }
+  local job_id="${1:?Usage: rp wait <job_id>}"
   while true; do
-    local result
+    local result status
     result=$(_curl "${BASE}/status/${job_id}")
-    local status
     status=$(echo "$result" | jq -r '.status')
     case "$status" in
       COMPLETED) echo "$result" | jq '.output'; return 0 ;;
@@ -73,28 +58,282 @@ cmd_wait() {
   done
 }
 
-cmd_health() {
-  _curl "${BASE}/health"
-}
-
 cmd_purge() {
   _curl -X POST "${BASE}/purge-queue"
-  echo ""
   echo "Queue purged"
+}
+
+# --- Voicebox API commands ---
+
+# GET shortcuts
+cmd_get() {
+  local path="${1:?Usage: rp get <path>}"
+  _sync GET "$path"
+}
+
+# Health / info
+cmd_vb_health() { _sync GET /health; }
+
+# Profiles
+cmd_profiles() { _sync GET /profiles; }
+
+cmd_profile() {
+  local id="${1:?Usage: rp profile <profile_id>}"
+  _sync GET "/profiles/${id}"
+}
+
+cmd_profile_create() {
+  local name="${1:?Usage: rp profile-create <name> [description] [language]}"
+  local desc="${2:-}"
+  local lang="${3:-en}"
+  _sync POST /profiles "$(jq -n --arg n "$name" --arg d "$desc" --arg l "$lang" \
+    '{name:$n, description:$d, language:$l}')"
+}
+
+cmd_profile_update() {
+  local id="${1:?Usage: rp profile-update <profile_id> <json>}"
+  shift
+  local json="${*:?Provide JSON body e.g. '{\"name\":\"New Name\"}'}"
+  _sync PUT "/profiles/${id}" "$json"
+}
+
+cmd_profile_delete() {
+  local id="${1:?Usage: rp profile-delete <profile_id>}"
+  _sync DELETE "/profiles/${id}"
+}
+
+cmd_profile_export() {
+  local id="${1:?Usage: rp profile-export <profile_id>}"
+  _sync GET "/profiles/${id}/export"
+}
+
+# Samples
+cmd_samples() {
+  local profile_id="${1:?Usage: rp samples <profile_id>}"
+  _sync GET "/profiles/${profile_id}/samples"
+}
+
+cmd_sample_update() {
+  local sample_id="${1:?Usage: rp sample-update <sample_id> <json>}"
+  shift
+  local json="${*:?Provide JSON body}"
+  _sync PUT "/profiles/samples/${sample_id}" "$json"
+}
+
+cmd_sample_delete() {
+  local sample_id="${1:?Usage: rp sample-delete <sample_id>}"
+  _sync DELETE "/profiles/samples/${sample_id}"
+}
+
+# Channels
+cmd_channels() { _sync GET /channels; }
+
+cmd_channel() {
+  local id="${1:?Usage: rp channel <channel_id>}"
+  _sync GET "/channels/${id}"
+}
+
+cmd_channel_create() {
+  local name="${1:?Usage: rp channel-create <name>}"
+  shift
+  local json="${*:-$(jq -n --arg n "$name" '{name:$n}')}"
+  _sync POST /channels "$json"
+}
+
+cmd_channel_update() {
+  local id="${1:?Usage: rp channel-update <channel_id> <json>}"
+  shift
+  local json="${*:?Provide JSON body}"
+  _sync PUT "/channels/${id}" "$json"
+}
+
+cmd_channel_delete() {
+  local id="${1:?Usage: rp channel-delete <channel_id>}"
+  _sync DELETE "/channels/${id}"
+}
+
+# Generate (async — long running)
+cmd_generate() {
+  local profile_id="${1:?Usage: rp generate <profile_id> <text> [language]}"
+  local text="${2:?Usage: rp generate <profile_id> <text> [language]}"
+  local lang="${3:-en}"
+  _async POST /generate "$(jq -n --arg p "$profile_id" --arg t "$text" --arg l "$lang" \
+    '{profile_id:$p, text:$t, language:$l}')"
+}
+
+cmd_generate_sync() {
+  local profile_id="${1:?Usage: rp generate-sync <profile_id> <text> [language]}"
+  local text="${2:?Usage: rp generate-sync <profile_id> <text> [language]}"
+  local lang="${3:-en}"
+  _sync POST /generate "$(jq -n --arg p "$profile_id" --arg t "$text" --arg l "$lang" \
+    '{profile_id:$p, text:$t, language:$l}')"
+}
+
+cmd_progress() {
+  local gen_id="${1:?Usage: rp progress <generation_id>}"
+  _sync GET "/generate/progress/${gen_id}"
+}
+
+cmd_busy() { _sync GET /generate/busy; }
+
+# Jobs
+cmd_jobs() { _sync GET /jobs; }
+cmd_jobs_pending() { _sync GET /jobs/pending; }
+
+cmd_job_cancel() {
+  local job_id="${1:?Usage: rp job-cancel <job_id>}"
+  _sync POST "/jobs/${job_id}/cancel"
+}
+
+# History
+cmd_history() { _sync GET /history; }
+
+cmd_history_item() {
+  local gen_id="${1:?Usage: rp history-item <generation_id>}"
+  _sync GET "/history/${gen_id}"
+}
+
+cmd_history_delete() {
+  local gen_id="${1:?Usage: rp history-delete <generation_id>}"
+  _sync DELETE "/history/${gen_id}"
+}
+
+cmd_history_stats() { _sync GET /history/stats; }
+
+# Stories
+cmd_stories() { _sync GET /stories; }
+
+cmd_story() {
+  local id="${1:?Usage: rp story <story_id>}"
+  _sync GET "/stories/${id}"
+}
+
+cmd_story_create() {
+  local title="${1:?Usage: rp story-create <title>}"
+  _sync POST /stories "$(jq -n --arg t "$title" '{title:$t}')"
+}
+
+cmd_story_update() {
+  local id="${1:?Usage: rp story-update <story_id> <json>}"
+  shift
+  local json="${*:?Provide JSON body}"
+  _sync PUT "/stories/${id}" "$json"
+}
+
+cmd_story_delete() {
+  local id="${1:?Usage: rp story-delete <story_id>}"
+  _sync DELETE "/stories/${id}"
+}
+
+# Models
+cmd_models() { _sync GET /models/status; }
+
+cmd_model_load() {
+  local name="${1:?Usage: rp model-load <model_name>}"
+  _sync POST /models/load "$(jq -n --arg n "$name" '{model_name:$n}')"
+}
+
+cmd_model_unload() {
+  local name="${1:?Usage: rp model-unload <model_name>}"
+  _sync POST /models/unload "$(jq -n --arg n "$name" '{model_name:$n}')"
+}
+
+cmd_model_download() {
+  local name="${1:?Usage: rp model-download <model_name>}"
+  _async POST /models/download "$(jq -n --arg n "$name" '{model_name:$n}')"
+}
+
+cmd_model_delete() {
+  local name="${1:?Usage: rp model-delete <model_name>}"
+  _sync DELETE "/models/${name}"
+}
+
+# Transcribe
+cmd_transcribe() {
+  local json="${1:?Usage: rp transcribe <json>}"
+  _sync POST /transcribe "$json"
+}
+
+# Cache
+cmd_cache_clear() { _sync POST /cache/clear "{}"; }
+
+# Raw passthrough
+cmd_raw() {
+  local method="${1:?Usage: rp raw <METHOD> <path> [json_body]}"
+  local path="${2:?Usage: rp raw <METHOD> <path> [json_body]}"
+  local body="${3:-}"
+  _sync "$method" "$path" "$body"
+}
+
+cmd_raw_async() {
+  local method="${1:?Usage: rp raw-async <METHOD> <path> [json_body]}"
+  local path="${2:?Usage: rp raw-async <METHOD> <path> [json_body]}"
+  local body="${3:-}"
+  _async "$method" "$path" "$body"
 }
 
 cmd_help() {
   cat <<'HELP'
 Usage: rp <command> [args]
 
-Commands:
-  run <prompt>      Async request, returns job ID
-  sync <prompt>     Sync request, waits for response
-  chat <message>    OpenAI chat completions (sync)
-  status <job_id>   Check job status
-  wait <job_id>     Poll until job completes
-  health            Endpoint health/worker status
-  purge             Clear job queue
+RunPod Infrastructure:
+  health                          RunPod endpoint health/workers
+  status <job_id>                 Check job status
+  wait <job_id>                   Poll until job completes
+  purge                           Clear job queue
+
+Voicebox API (via RunPod):
+  vb-health                       Voicebox server health
+
+  profiles                        List all profiles
+  profile <id>                    Get profile
+  profile-create <name> [desc] [lang]  Create profile
+  profile-update <id> <json>      Update profile
+  profile-delete <id>             Delete profile
+  profile-export <id>             Export profile as zip
+
+  samples <profile_id>            List samples for profile
+  sample-update <id> <json>       Update sample
+  sample-delete <id>              Delete sample
+
+  channels                        List channels
+  channel <id>                    Get channel
+  channel-create <name>           Create channel
+  channel-update <id> <json>      Update channel
+  channel-delete <id>             Delete channel
+
+  generate <profile_id> <text> [lang]       Generate speech (async)
+  generate-sync <profile_id> <text> [lang]  Generate speech (sync)
+  progress <generation_id>        Check generation progress
+  busy                            Check if generating
+
+  jobs                            List all jobs
+  jobs-pending                    List pending jobs
+  job-cancel <job_id>             Cancel job
+
+  history                         List generation history
+  history-item <generation_id>    Get history entry
+  history-delete <generation_id>  Delete history entry
+  history-stats                   Generation stats
+
+  stories                         List stories
+  story <id>                      Get story
+  story-create <title>            Create story
+  story-update <id> <json>        Update story
+  story-delete <id>               Delete story
+
+  models                          List loaded models
+  model-load <name>               Load model
+  model-unload <name>             Unload model
+  model-download <name>           Download model (async)
+  model-delete <name>             Delete model
+
+  transcribe <json>               Transcribe audio
+  cache-clear                     Clear all caches
+
+  get <path>                      Raw GET any endpoint
+  raw <METHOD> <path> [json]      Raw sync call
+  raw-async <METHOD> <path> [json]  Raw async call
 
 Env: RUNPOD_API_KEY, RUNPOD_ENDPOINT (from .env or environment)
 HELP
@@ -104,13 +343,51 @@ cmd="${1:-help}"
 shift 2>/dev/null || true
 
 case "$cmd" in
-  run)    cmd_run "$@" ;;
-  sync)   cmd_runsync "$@" ;;
-  chat)   cmd_chat "$@" ;;
-  status) cmd_status "$@" ;;
-  wait)   cmd_wait "$@" ;;
-  health) cmd_health ;;
-  purge)  cmd_purge ;;
-  help|-h|--help) cmd_help ;;
-  *)      echo "Unknown command: $cmd" >&2; cmd_help; exit 1 ;;
+  health)          cmd_health ;;
+  status)          cmd_status "$@" ;;
+  wait)            cmd_wait "$@" ;;
+  purge)           cmd_purge ;;
+  vb-health)       cmd_vb_health ;;
+  profiles)        cmd_profiles ;;
+  profile)         cmd_profile "$@" ;;
+  profile-create)  cmd_profile_create "$@" ;;
+  profile-update)  cmd_profile_update "$@" ;;
+  profile-delete)  cmd_profile_delete "$@" ;;
+  profile-export)  cmd_profile_export "$@" ;;
+  samples)         cmd_samples "$@" ;;
+  sample-update)   cmd_sample_update "$@" ;;
+  sample-delete)   cmd_sample_delete "$@" ;;
+  channels)        cmd_channels ;;
+  channel)         cmd_channel "$@" ;;
+  channel-create)  cmd_channel_create "$@" ;;
+  channel-update)  cmd_channel_update "$@" ;;
+  channel-delete)  cmd_channel_delete "$@" ;;
+  generate)        cmd_generate "$@" ;;
+  generate-sync)   cmd_generate_sync "$@" ;;
+  progress)        cmd_progress "$@" ;;
+  busy)            cmd_busy ;;
+  jobs)            cmd_jobs ;;
+  jobs-pending)    cmd_jobs_pending ;;
+  job-cancel)      cmd_job_cancel "$@" ;;
+  history)         cmd_history ;;
+  history-item)    cmd_history_item "$@" ;;
+  history-delete)  cmd_history_delete "$@" ;;
+  history-stats)   cmd_history_stats ;;
+  stories)         cmd_stories ;;
+  story)           cmd_story "$@" ;;
+  story-create)    cmd_story_create "$@" ;;
+  story-update)    cmd_story_update "$@" ;;
+  story-delete)    cmd_story_delete "$@" ;;
+  models)          cmd_models ;;
+  model-load)      cmd_model_load "$@" ;;
+  model-unload)    cmd_model_unload "$@" ;;
+  model-download)  cmd_model_download "$@" ;;
+  model-delete)    cmd_model_delete "$@" ;;
+  transcribe)      cmd_transcribe "$@" ;;
+  cache-clear)     cmd_cache_clear ;;
+  get)             cmd_get "$@" ;;
+  raw)             cmd_raw "$@" ;;
+  raw-async)       cmd_raw_async "$@" ;;
+  help|-h|--help)  cmd_help ;;
+  *)               echo "Unknown command: $cmd" >&2; cmd_help; exit 1 ;;
 esac

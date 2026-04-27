@@ -15,7 +15,7 @@ ARG CUDA=1
 ARG SERVERLESS=0
 
 # --- Base stage ---
-FROM nvidia/cuda:12.9.1-runtime-ubuntu24.04 AS base-cuda
+FROM nvidia/cuda:12.8.1-runtime-ubuntu24.04 AS base-cuda
 FROM ubuntu:24.04 AS base-cpu
 
 # --- Pick base based on CUDA arg --
