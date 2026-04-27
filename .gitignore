@@ -1,0 +1,68 @@
+# Dependencies
+node_modules/
+bun.lockb
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+*.prompt
+# Build outputs
+dist/
+build/
+*.egg-info/
+*.egg
+target/
+*.app
+*.dmg
+*.exe
+*.msi
+*.deb
+*.AppImage
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data (user-generated)
+data/profiles/*
+data/generations/*
+data/projects/*
+data/voicebox.db
+data/huggingface
+data/model_prefs.json
+!data/.gitkeep
+
+# Logs
+*.log
+logs/
+!logs/.gitkeep
+
+# Environment
+.env
+.env.local
+
+# Generated files
+app/openapi.json
+backend/voicebox-server.spec
+tauri/src-tauri/binaries/*
+
+# Temporary
+tmp/
+temp/
+*.tmp
+output*.m4a
+package-lock.json
+.claude
+tauri/src-tauri/gen/Assets.car
+.venv

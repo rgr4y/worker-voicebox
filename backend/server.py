@@ -1,0 +1,105 @@
+"""
+Entry point for PyInstaller-bundled voicebox server.
+
+This module provides an entry point that works with PyInstaller by using
+absolute imports instead of relative imports.
+"""
+
+import multiprocessing
+multiprocessing.freeze_support()
+
+import os
+import sys
+import logging
+
+# Set up JSON logging FIRST, before any imports that might fail
+from backend.utils.logging_config import configure_json_logging
+configure_json_logging()
+logger = logging.getLogger(__name__)
+
+# Log startup immediately to confirm binary execution
+logger.info("=" * 60)
+logger.info("voicebox-server starting up...")
+logger.info(f"Python version: {sys.version}")
+logger.info(f"Executable: {sys.executable}")
+logger.info(f"Arguments: {sys.argv}")
+logger.info("=" * 60)
+
+try:
+    logger.info("Importing argparse...")
+    import argparse
+    logger.info("Importing uvicorn...")
+    import uvicorn
+    logger.info("Standard library imports successful")
+
+    # Import the FastAPI app from the backend package
+    logger.info("Importing backend.config...")
+    from backend import config
+    logger.info("Importing backend.database...")
+    from backend import database
+    logger.info("Importing backend.main (this may take a while due to torch/transformers)...")
+    from backend.main import app
+    logger.info("Backend imports successful")
+except Exception as e:
+    logger.error(f"Failed to import required modules: {e}", exc_info=True)
+    sys.exit(1)
+
+if __name__ == "__main__":
+    try:
+        parser = argparse.ArgumentParser(description="voicebox backend server")
+        parser.add_argument(
+            "--host",
+            type=str,
+            default="127.0.0.1",
+            help="Host to bind to (use 0.0.0.0 for remote access)",
+        )
+        parser.add_argument(
+            "--port",
+            type=int,
+            default=8000,
+            help="Port to bind to",
+        )
+        parser.add_argument(
+            "--data-dir",
+            type=str,
+            default=None,
+            help="Data directory for database, profiles, and generated audio",
+        )
+        parser.add_argument(
+            "--log-file",
+            type=str,
+            default=None,
+            help="Also write JSON logs to this file",
+        )
+        # Use parse_known_args to tolerate extra args from multiprocessing
+        # resource tracker (-B -S -I -c ...) on PyInstaller bundles
+        args, _unknown = parser.parse_known_args()
+        logger.info(f"Parsed arguments: host={args.host}, port={args.port}, data_dir={args.data_dir}")
+
+        # Set up log file if requested
+        if args.log_file:
+            from backend.utils.logging_config import configure_log_file
+            configure_log_file(args.log_file)
+
+        # Set data directory if provided
+        if args.data_dir:
+            logger.info(f"Setting data directory to: {args.data_dir}")
+            config.set_data_dir(args.data_dir)
+
+        # Initialize database after data directory is set
+        logger.info("Initializing database...")
+        database.init_db()
+        logger.info("Database initialized successfully")
+
+        _log_level = os.environ.get("LOG_LEVEL", "info").lower()
+        logger.info(f"Starting uvicorn server on {args.host}:{args.port} (log_level={_log_level})...")
+        uvicorn.run(
+            app,
+            host=args.host,
+            port=args.port,
+            log_level=_log_level,
+            log_config=None,  # Don't let uvicorn overwrite our JSON logging config
+        )
+    except Exception as e:
+        logger.error(f"Server startup failed: {e}", exc_info=True)
+        sys.exit(1)

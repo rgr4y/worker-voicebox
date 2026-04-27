@@ -1,0 +1,41 @@
+##############################################################################
+# Linux/CUDA requirements — used by Docker builds and make setup-python-linux-cuda
+#
+# Restored from voicebox@9f8aa94 — the last known-working dependency tree.
+# Key difference from requirements.txt (macOS/MLX): transformers is PINNED to
+# 4.57.3 because qwen-tts was written against that exact version.
+##############################################################################
+
+# FastAPI and server
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+pydantic>=2.5.0
+
+# Database
+sqlalchemy>=2.0.0
+alembic>=1.13.0
+
+# ML models
+torch>=2.1.0
+torchvision>=0.16.0
+transformers==4.57.3
+accelerate>=0.26.0
+huggingface_hub>=0.20.0
+qwen-tts>=0.0.5
+
+# Audio processing
+librosa>=0.10.0
+soundfile>=0.12.0
+numpy>=1.24.0
+pyloudnorm>=0.1.0
+
+# HTTP client
+httpx>=0.24.0
+
+# Utilities
+python-multipart>=0.0.6
+python-json-logger>=2.0.7
+Pillow>=10.0.0
+
+# RunPod Serverless
+runpod>=1.7.0

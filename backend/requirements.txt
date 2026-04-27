@@ -1,0 +1,56 @@
+##############################################################################
+# WARNING: DO NOT run `pip install -r requirements.txt` directly on macOS!
+#
+# On Apple Silicon, use `make setup-python` instead. It handles:
+#   1. Installing MLX-compatible transformers (5.x) from requirements-mlx.txt
+#   2. Filtering out the transformers line from THIS file to avoid downgrade
+#   3. Installing qwen-tts with --no-deps (bypasses its transformers==4.57.3 pin)
+#
+# Installing this file directly on macOS will break MLX by downgrading
+# transformers from 5.x to 4.57.3, and will likely cause other dep conflicts.
+#
+# This file is used by:
+#   - Docker builds (Linux/CUDA) via Dockerfile
+#   - Non-Apple-Silicon installs
+##############################################################################
+
+# FastAPI and server
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+pydantic>=2.5.0
+
+# Database
+sqlalchemy>=2.0.0
+alembic>=1.13.0
+
+# ML models
+torch>=2.1.0
+torchvision>=0.16.0
+torchaudio  # For qwen-tts
+# transformers: flexible version to support both PyTorch (4.57.3) and MLX (5.0.0rc3) on macOS
+transformers>=4.57.3
+accelerate>=0.26.0
+huggingface_hub>=0.20.0
+# qwen-tts installed separately with --no-deps to avoid transformers version conflict
+# (qwen-tts pins transformers==4.57.3 exactly; macOS needs 5.x for MLX)
+einops
+gradio
+onnxruntime
+sox
+
+# Audio processing
+librosa>=0.10.0
+soundfile>=0.12.0
+numpy>=1.24.0
+pyloudnorm>=0.1.0
+
+# HTTP client
+httpx>=0.24.0
+
+# Utilities
+python-multipart>=0.0.6
+python-json-logger>=2.0.7
+Pillow>=10.0.0
+
+# RunPod Serverless
+runpod>=1.9.0
