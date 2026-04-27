@@ -24,9 +24,6 @@ jobs:
           rm -rf "/usr/local/share/boost"
           rm -rf "$AGENT_TOOLSDIRECTORY"
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -47,6 +44,8 @@ jobs:
         with:
           push: true
           set: |
+            voicebox.tags=dx4100/worker-voicebox:${{ env.RELEASE_VERSION }},dx4100/worker-voicebox:latest
+            voicebox.platform=linux/amd64
             *.args.RELEASE_VERSION=${{ env.RELEASE_VERSION }}
             *.args.HUGGINGFACE_ACCESS_TOKEN=${{ env.HUGGINGFACE_ACCESS_TOKEN }}
 
