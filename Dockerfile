@@ -38,7 +38,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     ffmpeg \
     curl \
     git \
-    binutils \
     sox \
     zsh \
     eza && rm -rf /var/lib/apt/lists/*
@@ -60,27 +59,15 @@ RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
     else \
         /opt/venv/bin/pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu && \
         /opt/venv/bin/pip install -r requirements-linux.txt --extra-index-url https://download.pytorch.org/whl/cpu; \
-    fi && \
-    /opt/venv/bin/pip install pyinstaller
+    fi
 
 ENV PATH="/opt/venv/bin:$PATH"
-
-# --- Build stage: PyInstaller binary ---
-FROM deps AS build
-
-COPY backend/ /app/backend/
-COPY scripts/ /app/scripts/
-
-RUN chmod +x /app/scripts/build-server.sh && \
-    cd /app && \
-    PATH="/opt/venv/bin:$PATH" ./scripts/build-server.sh && \
-    ls -lh /app/backend/dist/voicebox-server
 
 # --- Runtime stage ---
 FROM base AS runtime
 
-COPY --from=build /opt/venv /opt/venv
-COPY --from=build /app/backend/dist/voicebox-server /usr/local/bin/voicebox-server
+COPY --from=deps /opt/venv /opt/venv
+COPY backend/ /app/backend/
 
 COPY backend/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
@@ -94,7 +81,7 @@ EXPOSE 17493
 HEALTHCHECK --interval=60s --timeout=5s --start-period=30s --retries=3 \
     CMD curl -f http://localhost:17493/health || exit 1
 ENTRYPOINT ["/docker-entrypoint.sh"]
-CMD ["voicebox-server", "--host", "0.0.0.0", "--port", "17493", "--data-dir", "/app/data"]
+CMD ["python3", "-m", "backend.server", "--host", "0.0.0.0", "--port", "17493", "--data-dir", "/app/data"]
 
 # --- Serverless mode: RunPod handler ---
 FROM runtime AS final-1
