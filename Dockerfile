@@ -39,56 +39,67 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     curl \
     sox \
     zsh \
+    eza \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 # --- Dependencies stage (cached layer) ---
 FROM base AS deps
 
 ARG CUDA
-ARG DEV_VENV=0
 WORKDIR /app
 
-# If DEV_VENV=1 (build arg), skip building /opt/venv entirely — the host venv at
-# /app/backend/venv will be used instead (volume-mounted at runtime via docker-entrypoint.sh).
-# If DEV_VENV=0 (default), build the full /opt/venv for production use.
 COPY backend/requirements-linux.txt ./requirements-linux.txt
 
 RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
-    if [ "$DEV_VENV" = "0" ]; then \
-        python3 -m venv /opt/venv && \
-        /opt/venv/bin/pip install --upgrade pip && \
-        if [ "$CUDA" = "1" ]; then \
-            /opt/venv/bin/pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124 && \
-            /opt/venv/bin/pip install -r requirements-linux.txt --extra-index-url https://download.pytorch.org/whl/cu124; \
-        else \
-            /opt/venv/bin/pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu && \
-            /opt/venv/bin/pip install -r requirements-linux.txt --extra-index-url https://download.pytorch.org/whl/cpu; \
-        fi; \
+    python3 -m venv /opt/venv && \
+    /opt/venv/bin/pip install --upgrade pip && \
+    if [ "$CUDA" = "1" ]; then \
+        /opt/venv/bin/pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124 && \
+        /opt/venv/bin/pip install -r requirements-linux.txt --extra-index-url https://download.pytorch.org/whl/cu124; \
     else \
-        echo "DEV_VENV=1: skipping /opt/venv build, host venv will be used at runtime"; \
-    fi
+        /opt/venv/bin/pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu && \
+        /opt/venv/bin/pip install -r requirements-linux.txt --extra-index-url https://download.pytorch.org/whl/cpu; \
+    fi && \
+    /opt/venv/bin/pip install pyinstaller
 
-# Copy entrypoint script (selects /opt/venv or host venv based on DEV_VENV env var)
+ENV PATH="/opt/venv/bin:$PATH"
+
+# --- Build stage: PyInstaller binary ---
+FROM deps AS build
+
+COPY backend/ /app/backend/
+COPY scripts/ /app/scripts/
+
+RUN chmod +x /app/scripts/build-server.sh && \
+    cd /app && \
+    PATH="/opt/venv/bin:$PATH" ./scripts/build-server.sh && \
+    ls -lh /app/backend/dist/voicebox-server
+
+# --- Runtime stage ---
+FROM base AS runtime
+
+COPY --from=build /opt/venv /opt/venv
+COPY --from=build /app/backend/dist/voicebox-server /usr/local/bin/voicebox-server
+
 COPY backend/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
-# Source is volume-mounted at runtime (local dev) or COPYed below (serverless)
+ENV PATH="/opt/venv/bin:$PATH"
 ENV HF_HOME=/app/data/huggingface
 
-# Copy source into image for non-volume-mount deployments (e.g. RunPod)
-COPY backend/ /app/backend/
-
 # --- Normal mode: FastAPI server on port 17493 ---
-FROM deps AS final-0
+FROM runtime AS final-0
 EXPOSE 17493
 HEALTHCHECK --interval=60s --timeout=5s --start-period=30s --retries=3 \
     CMD curl -f http://localhost:17493/health || exit 1
 ENTRYPOINT ["/docker-entrypoint.sh"]
-CMD ["python3", "-m", "backend.main", "--host", "0.0.0.0", "--port", "17493", "--data-dir", "/app/data"]
+CMD ["voicebox-server", "--host", "0.0.0.0", "--port", "17493", "--data-dir", "/app/data"]
 
 # --- Serverless mode: RunPod handler ---
-FROM deps AS final-1
+FROM runtime AS final-1
 ENV SERVERLESS=1
+COPY backend/ /app/backend/
 HEALTHCHECK NONE
 ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD []

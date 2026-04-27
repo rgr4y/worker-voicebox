@@ -84,7 +84,16 @@ $(VENV)/bin/activate:
 # DEVELOPMENT
 # =============================================================================
 
-.PHONY: dev build
+.PHONY: docker-cuda docker-cpu docker-runpod dev build
+
+docker-cuda: ## Build Docker image (GPU/CUDA)
+	DOCKER_BUILDKIT=1 docker build -t voicebox .
+
+docker-cpu: ## Build Docker image (CPU-only)
+	DOCKER_BUILDKIT=1 docker build --build-arg CUDA=0 -t voicebox-cpu .
+
+docker-runpod: ## Build Docker image (RunPod serverless)
+	DOCKER_BUILDKIT=1 docker build --build-arg SERVERLESS=1 -t voicebox-serverless .
 
 dev: ## Start FastAPI backend server (auto-reload)
 	@echo -e "$(BLUE)Starting backend server on http://localhost:17493$(NC)"
