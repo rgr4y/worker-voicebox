@@ -50,6 +50,7 @@ jobs:
             voicebox.platform=linux/amd64
             *.args.RELEASE_VERSION=${{ env.RELEASE_VERSION }}
             *.args.HUGGINGFACE_ACCESS_TOKEN=${{ env.HUGGINGFACE_ACCESS_TOKEN }}
+            *.args.SERVERLESS=1
 
       - name: Build Summary
         run: |
