@@ -13,8 +13,6 @@
 
 ARG CUDA=1
 ARG SERVERLESS=0
-ENV HF_HUB_ENABLE_HF_TRANSFER=1
-ENV PYTHONUNBUFFERED=1
 
 # --- Base stage ---
 FROM nvidia/cuda:12.9.1-runtime-ubuntu24.04 AS base-cuda
@@ -27,6 +25,7 @@ FROM base-${CUDA} AS base
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
+ENV HF_HUB_ENABLE_HF_TRANSFER=1
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
