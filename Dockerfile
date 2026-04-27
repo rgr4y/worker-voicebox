@@ -38,6 +38,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     ffmpeg \
     curl \
     git \
+    binutils \
     sox \
     zsh \
     eza && rm -rf /var/lib/apt/lists/*
