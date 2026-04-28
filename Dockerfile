@@ -54,10 +54,10 @@ RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
     python3 -m venv /opt/venv && \
     /opt/venv/bin/pip install --upgrade pip && \
     if [ "$CUDA" = "1" ]; then \
-        /opt/venv/bin/pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124 && \
+        /opt/venv/bin/pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124 && \
         /opt/venv/bin/pip install -r requirements-linux.txt --extra-index-url https://download.pytorch.org/whl/cu124; \
     else \
-        /opt/venv/bin/pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu && \
+        /opt/venv/bin/pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu && \
         /opt/venv/bin/pip install -r requirements-linux.txt --extra-index-url https://download.pytorch.org/whl/cpu; \
     fi
 
