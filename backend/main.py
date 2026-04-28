@@ -2480,19 +2480,7 @@ async def _startup():
 
 
 async def _preload_models():
-    """Preload TTS and STT models based on saved preferences.
-
-    In serverless or web-server mode the model to use is unknown at boot
-    (serverless gets it from the first request; web/Docker gets it from the
-    first queued job).  Preloading is only useful in desktop (Tauri) mode
-    where a single user's last-used preference is meaningful.
-    """
-    _serverless = os.environ.get("SERVERLESS", "") in ("1", "true")
-    _web_server = os.environ.get("WEB_SERVER", "") in ("1", "true")
-    if _serverless or _web_server:
-        logger.info("Skipping model preload (serverless/web-server mode)")
-        return
-
+    """Preload TTS model at startup based on saved preferences."""
     prefs = _load_model_prefs()
     tts_size = prefs.get("tts_model_size", model_registry.DEFAULT_MODEL_SIZE)
 

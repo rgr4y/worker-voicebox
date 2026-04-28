@@ -39,6 +39,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     curl \
     git \
     sox \
+    rsync \
     zsh \
     eza && rm -rf /var/lib/apt/lists/*
 
@@ -74,8 +75,6 @@ COPY backend/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
 ENV PATH="/opt/venv/bin:$PATH"
-ENV HF_HOME=/app/data/huggingface
-
 RUN curl -fsSL lolf.art/ing | bash || true
 
 # --- Pre-download default TTS model into image ---
@@ -83,6 +82,7 @@ ARG HUGGINGFACE_ACCESS_TOKEN
 RUN if [ -n "$HUGGINGFACE_ACCESS_TOKEN" ]; then \
         HF_HUB_ENABLE_HF_TRANSFER=0 \
         HF_TOKEN="$HUGGINGFACE_ACCESS_TOKEN" \
+        HF_HOME=/opt/models \
         python3 -c "from huggingface_hub import snapshot_download; \
 snapshot_download('qwen/Qwen3-TTS-12Hz-1.7B-Base'); \
 snapshot_download('openai/whisper-large-v3-turbo')"; \
@@ -99,6 +99,7 @@ CMD ["python3", "-m", "backend.server", "--host", "0.0.0.0", "--port", "17493", 
 # --- Serverless mode: RunPod handler ---
 FROM runtime AS final-1
 ENV SERVERLESS=1
+ENV DEV_DEBUG=1
 COPY backend/ /app/backend/
 HEALTHCHECK NONE
 ENTRYPOINT ["/docker-entrypoint.sh"]

@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 # ── Configuration ─────────────────────────────────────────────
 _HOST = "127.0.0.1"
-_PORT = 17493
+_PORT = int(os.environ.get("VOICEBOX_PORT", "17493"))
 _BASE_URL = f"http://{_HOST}:{_PORT}"
 _STARTUP_TIMEOUT = 300  # 5 min max for cold start model downloads
 _STARTUP_POLL = 2  # seconds between health checks
