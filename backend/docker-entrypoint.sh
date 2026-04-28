@@ -2,16 +2,28 @@
 set -x
 # Docker entrypoint for voicebox server.
 
+# Remote syslog — start ASAP so all subsequent output is captured
+if [[ -n "${RSYSLOG_HOST:-}" ]]; then
+    RSYSLOG_PORT="${RSYSLOG_PORT:-514}"
+    cat > /etc/rsyslog.d/50-remote.conf <<RSYSLOG
+*.* @@${RSYSLOG_HOST}:${RSYSLOG_PORT}
+RSYSLOG
+    rsyslogd
+    # Redirect stdout/stderr through syslog via logger
+    exec > >(logger -t voicebox -p local0.info) 2> >(logger -t voicebox -p local0.err)
+    echo "rsyslog forwarding to ${RSYSLOG_HOST}:${RSYSLOG_PORT}"
+fi
+
 eval "$(
 python3 - <<'PY'
-from backend.constants import APP_LOG_PATH, DATA_DIR, HF_HOME, PROXY_PORT, VOICEBOX_PORT
+from backend.constants import APP_LOG_FILENAME, DATA_DIR, HF_HOME, PROXY_PORT, VOICEBOX_PORT
 
 print(f'export VOICEBOX_DATA_DIR="${{VOICEBOX_DATA_DIR:-{DATA_DIR}}}"')
 print(f'export HF_HOME="${{HF_HOME:-{HF_HOME}}}"')
 print(f'export VOICEBOX_PORT="${{VOICEBOX_PORT:-{VOICEBOX_PORT}}}"')
 print(f'export PROXY_PORT="${{PROXY_PORT:-{PROXY_PORT}}}"')
 print(f'export BACKEND_PORT="${{BACKEND_PORT:-{VOICEBOX_PORT}}}"')
-print(f'export APP_LOG_PATH="{APP_LOG_PATH}"')
+print(f'export APP_LOG_PATH="{DATA_DIR}/{APP_LOG_FILENAME}"')
 PY
 )"
 mkdir -p "$VOICEBOX_DATA_DIR" "$HF_HOME"

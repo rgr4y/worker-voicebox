@@ -41,7 +41,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     git \
     sox \
     zsh \
-    eza && rm -rf /var/lib/apt/lists/*
+    eza \
+    rsyslog && rm -rf /var/lib/apt/lists/*
 
 # --- Dependencies stage (cached layer) ---
 FROM base AS deps
