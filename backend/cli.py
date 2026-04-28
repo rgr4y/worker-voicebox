@@ -10,16 +10,41 @@ from pathlib import Path
 
 import requests
 
-DEFAULT_URL = "http://127.0.0.1:17493"
-SERVER_BIN = "/Applications/Voicebox.app/Contents/MacOS/voicebox-server"
-DEFAULT_DATA_DIR = Path.home() / "Library/Application Support/sh.voicebox.app"
+from .constants import (
+    AUDIO_PATH_TEMPLATE,
+    CLI_API_TIMEOUT_SECONDS,
+    CLI_DEFAULT_DATA_DIR,
+    CLI_FILE_TRANSFER_TIMEOUT_SECONDS,
+    CLI_HEALTHCHECK_TIMEOUT_SECONDS,
+    CLI_LOG_FILENAME,
+    CLI_PID_FILENAME,
+    CLI_SERVER_BIN,
+    CLI_SERVER_READY_POLL_COUNT,
+    CLI_SERVER_READY_POLL_SECONDS,
+    CLI_STREAM_PROGRESS_TIMEOUT_SECONDS,
+    CLI_STREAM_START_TIMEOUT_SECONDS,
+    DEFAULT_LANGUAGE,
+    GENERATE_PROGRESS_PATH_TEMPLATE,
+    GENERATE_STREAM_PATH,
+    HEALTH_PATH,
+    HISTORY_PATH,
+    LOCALHOST,
+    PROFILES_IMPORT_PATH,
+    PROFILES_PATH,
+    VOICEBOX_PORT_DEFAULT,
+    build_base_url,
+)
+
+DEFAULT_URL = build_base_url(LOCALHOST, VOICEBOX_PORT_DEFAULT)
+SERVER_BIN = CLI_SERVER_BIN
+DEFAULT_DATA_DIR = CLI_DEFAULT_DATA_DIR
 
 
 # --- API helpers ---
 
 def api(method, base_url, path, **kwargs):
     """Make an API call with consistent error handling."""
-    kwargs.setdefault("timeout", 30)
+    kwargs.setdefault("timeout", CLI_API_TIMEOUT_SECONDS)
     try:
         resp = getattr(requests, method)(f"{base_url}{path}", **kwargs)
     except requests.ConnectionError:
@@ -38,8 +63,8 @@ def api(method, base_url, path, **kwargs):
 
 # --- Subcommands ---
 
-PID_FILE = Path.home() / ".voicebox.pid"
-LOG_FILE = Path.home() / ".voicebox.log"
+PID_FILE = Path.home() / CLI_PID_FILENAME
+LOG_FILE = Path.home() / CLI_LOG_FILENAME
 
 
 def cmd_server(args):
@@ -84,16 +109,16 @@ def cmd_server(args):
         )
         PID_FILE.write_text(str(proc.pid))
         print(f"Waiting for server (pid {proc.pid}, port {port})...", end="", flush=True)
-        url = f"http://127.0.0.1:{port}/health"
-        for _ in range(60):
-            time.sleep(0.5)
+        url = f"{build_base_url(LOCALHOST, int(port))}{HEALTH_PATH}"
+        for _ in range(CLI_SERVER_READY_POLL_COUNT):
+            time.sleep(CLI_SERVER_READY_POLL_SECONDS)
             if proc.poll() is not None:
                 print(" failed.")
                 print(f"Server exited. Check log: {LOG_FILE}", file=sys.stderr)
                 PID_FILE.unlink(missing_ok=True)
                 sys.exit(1)
             try:
-                r = requests.get(url, timeout=2)
+                r = requests.get(url, timeout=CLI_HEALTHCHECK_TIMEOUT_SECONDS)
                 if r.status_code == 200:
                     print(" ready.")
                     print(f"Stop with: voicebox server --stop")
@@ -185,7 +210,7 @@ def cmd_generate(args):
     payload = {
         "profile_id": profile["id"],
         "text": text,
-        "language": args.language or profile.get("language", "en"),
+        "language": args.language or profile.get("language", DEFAULT_LANGUAGE),
     }
     if args.seed is not None:
         payload["seed"] = args.seed
@@ -196,15 +221,15 @@ def cmd_generate(args):
     start = time.time()
 
     # Use streaming mode — start generation asynchronously
-    resp = api("post", args.url, "/generate?stream=true", json=payload, timeout=10)
+    resp = api("post", args.url, GENERATE_STREAM_PATH, json=payload, timeout=CLI_STREAM_START_TIMEOUT_SECONDS)
     start_data = resp.json()
     generation_id = start_data["generation_id"]
 
     # Stream progress via SSE
     progress_resp = requests.get(
-        f"{args.url}/generate/progress/{generation_id}",
+        f"{args.url}{GENERATE_PROGRESS_PATH_TEMPLATE.format(generation_id=generation_id)}",
         stream=True,
-        timeout=300,
+        timeout=CLI_STREAM_PROGRESS_TIMEOUT_SECONDS,
     )
 
     final_data = None

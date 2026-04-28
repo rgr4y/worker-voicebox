@@ -2,6 +2,7 @@
 set -x
 # Docker entrypoint for voicebox server.
 
+# Defaults must match backend/constants.py
 export VOICEBOX_DATA_DIR="${VOICEBOX_DATA_DIR:-/runpod-volume/voicebox}"
 export HF_HOME="${HF_HOME:-$VOICEBOX_DATA_DIR/huggingface}"
 mkdir -p "$VOICEBOX_DATA_DIR" "$HF_HOME"
@@ -29,11 +30,12 @@ json_log "INFO" "cmd=$*"
 # /health always returns 200 so RunPod keeps the pod alive
 # Use /_proxy/stop, /_proxy/start, /_proxy/restart to manage backend
 if [ "${DEV_DEBUG:-0}" = "1" ]; then
-    json_log "INFO" "dev debug mode — proxy on :17494, backend on :17493"
-    export PROXY_PORT=17494
-    export BACKEND_PORT=17493
+    # Port defaults must match backend/constants.py
+    export PROXY_PORT="${PROXY_PORT:-17494}"
+    export BACKEND_PORT="${BACKEND_PORT:-17493}"
+    export VOICEBOX_PORT="${VOICEBOX_PORT:-17493}"
     export BACKEND_CMD="$*"
-    export VOICEBOX_PORT=17493
+    json_log "INFO" "dev debug mode — proxy on :$PROXY_PORT, backend on :$BACKEND_PORT"
     exec python3 -u -m backend.proxy
 fi
 

@@ -7,13 +7,27 @@ from typing import Optional, List
 from datetime import datetime
 
 from . import model_registry
+from .constants import (
+    DEFAULT_LANGUAGE,
+    DEFAULT_JOB_STATUS_FILTER,
+    JOB_STATUS_QUEUED,
+    MAX_GENERATION_TEXT_LENGTH,
+    MAX_HISTORY_LIMIT,
+    MAX_INSTRUCT_LENGTH,
+    MAX_PROFILE_DESCRIPTION_LENGTH,
+    MAX_PROFILE_NAME_LENGTH,
+    MAX_REQUEST_USER_FIRST_NAME_LENGTH,
+    MAX_REQUEST_USER_ID_LENGTH,
+    MAX_SAMPLE_REFERENCE_TEXT_LENGTH,
+    SUPPORTED_LANGUAGES_PATTERN,
+)
 
 
 class VoiceProfileCreate(BaseModel):
     """Request model for creating a voice profile."""
-    name: str = Field(..., min_length=1, max_length=100)
-    description: Optional[str] = Field(None, max_length=500)
-    language: str = Field(default="en", pattern="^(zh|en|ja|ko|de|fr|ru|pt|es|it)$")
+    name: str = Field(..., min_length=1, max_length=MAX_PROFILE_NAME_LENGTH)
+    description: Optional[str] = Field(None, max_length=MAX_PROFILE_DESCRIPTION_LENGTH)
+    language: str = Field(default=DEFAULT_LANGUAGE, pattern=SUPPORTED_LANGUAGES_PATTERN)
 
 
 class VoiceProfileResponse(BaseModel):
@@ -32,12 +46,12 @@ class VoiceProfileResponse(BaseModel):
 
 class ProfileSampleCreate(BaseModel):
     """Request model for adding a sample to a profile."""
-    reference_text: str = Field(..., min_length=1, max_length=1000)
+    reference_text: str = Field(..., min_length=1, max_length=MAX_SAMPLE_REFERENCE_TEXT_LENGTH)
 
 
 class ProfileSampleUpdate(BaseModel):
     """Request model for updating a profile sample."""
-    reference_text: str = Field(..., min_length=1, max_length=1000)
+    reference_text: str = Field(..., min_length=1, max_length=MAX_SAMPLE_REFERENCE_TEXT_LENGTH)
 
 
 class ProfileSampleResponse(BaseModel):
@@ -54,13 +68,13 @@ class ProfileSampleResponse(BaseModel):
 class GenerationRequest(BaseModel):
     """Request model for voice generation."""
     profile_id: str
-    text: str = Field(..., min_length=1, max_length=5000)
-    language: str = Field(default="en", pattern="^(zh|en|ja|ko|de|fr|ru|pt|es|it)$")
+    text: str = Field(..., min_length=1, max_length=MAX_GENERATION_TEXT_LENGTH)
+    language: str = Field(default=DEFAULT_LANGUAGE, pattern=SUPPORTED_LANGUAGES_PATTERN)
     seed: Optional[int] = Field(None, ge=0)
     model_size: Optional[str] = Field(default=model_registry.DEFAULT_MODEL_SIZE, pattern=model_registry.valid_sizes_pattern())
-    instruct: Optional[str] = Field(None, max_length=500)
-    request_user_id: Optional[str] = Field(None, max_length=128)
-    request_user_first_name: Optional[str] = Field(None, max_length=64)
+    instruct: Optional[str] = Field(None, max_length=MAX_INSTRUCT_LENGTH)
+    request_user_id: Optional[str] = Field(None, max_length=MAX_REQUEST_USER_ID_LENGTH)
+    request_user_first_name: Optional[str] = Field(None, max_length=MAX_REQUEST_USER_FIRST_NAME_LENGTH)
 
 
 class GenerationResponse(BaseModel):
@@ -88,7 +102,7 @@ class GenerationResponse(BaseModel):
 class GenerationStartResponse(BaseModel):
     """Response model for async generation start."""
     generation_id: str
-    status: str = "queued"
+    status: str = JOB_STATUS_QUEUED
 
 
 class GenerationJobResponse(BaseModel):

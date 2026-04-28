@@ -16,9 +16,29 @@ import time
 import urllib.error
 import urllib.request
 
-LISTEN_PORT = int(os.environ.get("PROXY_PORT", "17493"))
-BACKEND_PORT = int(os.environ.get("BACKEND_PORT", "17494"))
-BACKEND_HOST = "127.0.0.1"
+from backend.constants import (
+    BACKEND_HOST,
+    ENV_BACKEND_HOST,
+    ENV_BACKEND_PORT,
+    ENV_PROXY_PORT,
+    HEALTH_PATH,
+    HEALTHY_STATUS,
+    HEADER_CONTENT_LENGTH,
+    HEADER_TRANSFER_ENCODING,
+    PROXY_PORT,
+    PROXY_RESTART_DELAY_SECONDS,
+    PROXY_REQUEST_TIMEOUT_SECONDS,
+    PROXY_RESTART_PATH,
+    PROXY_START_PATH,
+    PROXY_STATUS_PATH,
+    PROXY_STOP_PATH,
+    PROXY_STOP_TIMEOUT_SECONDS,
+    VOICEBOX_PORT,
+)
+
+LISTEN_PORT = int(os.environ.get(ENV_PROXY_PORT, str(PROXY_PORT)))
+BACKEND_PORT = int(os.environ.get(ENV_BACKEND_PORT, str(VOICEBOX_PORT)))
+BACKEND_HOST = os.environ.get(ENV_BACKEND_HOST, BACKEND_HOST)
 BACKEND_CMD = os.environ.get("BACKEND_CMD", "").split() or None
 DEV_DEBUG = os.environ.get("DEV_DEBUG", "0") == "1"
 
@@ -48,7 +68,7 @@ def stop_backend():
             return False, "backend not running"
         backend_process.terminate()
         try:
-            backend_process.wait(timeout=10)
+            backend_process.wait(timeout=PROXY_STOP_TIMEOUT_SECONDS)
         except subprocess.TimeoutExpired:
             backend_process.kill()
             backend_process.wait()
@@ -65,51 +85,51 @@ def backend_alive() -> bool:
 class ProxyHandler(http.server.BaseHTTPRequestHandler):
     def do_request(self):
         # In dev debug mode, /health always reports healthy
-        if DEV_DEBUG and self.path in ("/health", "/health/"):
+        if DEV_DEBUG and self.path in (HEALTH_PATH, f"{HEALTH_PATH}/"):
             return self._json_response(200, {
-                "status": "healthy",
+                "status": HEALTHY_STATUS,
                 "dev_debug": True,
                 "backend": "up" if backend_alive() else "down",
             })
 
         # Proxy control endpoints
-        if self.path == "/_proxy/status":
+        if self.path == PROXY_STATUS_PATH:
             return self._json_response(200, {
                 "proxy": "ok",
                 "backend": "up" if backend_alive() else "down",
                 "backend_port": BACKEND_PORT,
             })
 
-        if self.path == "/_proxy/start":
+        if self.path == PROXY_START_PATH:
             ok, msg = start_backend()
             return self._json_response(200 if ok else 409, {"result": msg})
 
-        if self.path == "/_proxy/stop":
+        if self.path == PROXY_STOP_PATH:
             ok, msg = stop_backend()
             return self._json_response(200 if ok else 409, {"result": msg})
 
-        if self.path == "/_proxy/restart":
+        if self.path == PROXY_RESTART_PATH:
             stop_backend()
-            time.sleep(0.5)
+            time.sleep(PROXY_RESTART_DELAY_SECONDS)
             ok, msg = start_backend()
             return self._json_response(200 if ok else 500, {"result": msg})
 
         # Forward to backend
-        content_length = int(self.headers.get("Content-Length", 0))
+        content_length = int(self.headers.get(HEADER_CONTENT_LENGTH, 0))
         body = self.rfile.read(content_length) if content_length else None
 
         url = f"http://{BACKEND_HOST}:{BACKEND_PORT}{self.path}"
         req = urllib.request.Request(url, data=body, method=self.command)
         for key, val in self.headers.items():
-            if key.lower() not in ("host", "content-length", "transfer-encoding"):
+            if key.lower() not in ("host", HEADER_CONTENT_LENGTH.lower(), HEADER_TRANSFER_ENCODING):
                 req.add_header(key, val)
 
         try:
-            with urllib.request.urlopen(req, timeout=300) as resp:
+            with urllib.request.urlopen(req, timeout=PROXY_REQUEST_TIMEOUT_SECONDS) as resp:
                 resp_body = resp.read()
                 self.send_response(resp.status)
                 for key, val in resp.getheaders():
-                    if key.lower() not in ("transfer-encoding",):
+                    if key.lower() not in (HEADER_TRANSFER_ENCODING,):
                         self.send_header(key, val)
                 self.end_headers()
                 self.wfile.write(resp_body)
@@ -118,7 +138,7 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
                 resp_body = e.read()
                 self.send_response(e.code)
                 for key, val in e.headers.items():
-                    if key.lower() not in ("transfer-encoding",):
+                    if key.lower() not in (HEADER_TRANSFER_ENCODING,):
                         self.send_header(key, val)
                 self.end_headers()
                 self.wfile.write(resp_body)

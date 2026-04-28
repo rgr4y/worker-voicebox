@@ -12,6 +12,7 @@ from pathlib import Path
 
 from . import config
 from . import model_registry
+from .constants import DEFAULT_LANGUAGE, JOB_STATUS_QUEUED
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ class VoiceProfile(Base):
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     name = Column(String, unique=True, nullable=False)
     description = Column(Text)
-    language = Column(String, default="en")
+    language = Column(String, default=DEFAULT_LANGUAGE)
     avatar_path = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -38,11 +39,11 @@ class GenerationJob(Base):
     id = Column(String, primary_key=True)  # UUID set by caller
     profile_id = Column(String, ForeignKey("profiles.id"), nullable=False)
     text = Column(Text, nullable=False)
-    language = Column(String, default="en")
+    language = Column(String, default=DEFAULT_LANGUAGE)
     seed = Column(Integer, nullable=True)
     model_size = Column(String, default=model_registry.DEFAULT_MODEL_SIZE)
     instruct = Column(Text, nullable=True)
-    status = Column(String, default="queued")  # queued | generating | cancelling | complete | cancelled | error | timeout | deleted
+    status = Column(String, default=JOB_STATUS_QUEUED)  # queued | generating | cancelling | complete | cancelled | error | timeout | deleted
     progress = Column(Float, default=0.0)
     error = Column(Text, nullable=True)
     generation_id = Column(String, nullable=True)  # links to generations.id on complete
@@ -72,7 +73,7 @@ class Generation(Base):
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     profile_id = Column(String, ForeignKey("profiles.id"), nullable=False)
     text = Column(Text, nullable=False)
-    language = Column(String, default="en")
+    language = Column(String, default=DEFAULT_LANGUAGE)
     audio_path = Column(String, nullable=False)
     duration = Column(Float, nullable=False)
     generation_time_seconds = Column(Float, nullable=True)

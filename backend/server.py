@@ -12,6 +12,8 @@ import os
 import sys
 import logging
 
+from backend.constants import API_BIND_PORT_DEFAULT, LOCALHOST
+
 # Set up JSON logging FIRST, before any imports that might fail
 from backend.utils.logging_config import configure_json_logging
 configure_json_logging()
@@ -50,13 +52,13 @@ if __name__ == "__main__":
         parser.add_argument(
             "--host",
             type=str,
-            default="127.0.0.1",
+            default=LOCALHOST,
             help="Host to bind to (use 0.0.0.0 for remote access)",
         )
         parser.add_argument(
             "--port",
             type=int,
-            default=8000,
+            default=API_BIND_PORT_DEFAULT,
             help="Port to bind to",
         )
         parser.add_argument(

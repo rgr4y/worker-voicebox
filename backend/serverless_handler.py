@@ -28,11 +28,22 @@ import uvicorn
 logger = logging.getLogger(__name__)
 
 # ── Configuration ─────────────────────────────────────────────
-_HOST = "0.0.0.0"
-_PORT = int(os.environ.get("VOICEBOX_PORT", "17493"))
-_BASE_URL = f"http://{_HOST}:{_PORT}"
-_STARTUP_TIMEOUT = 300  # 5 min max for cold start model downloads
-_STARTUP_POLL = 2  # seconds between health checks
+from backend.constants import (
+    build_base_url,
+    DATA_DIR,
+    HEALTH_PATH,
+    SERVERLESS_REQUEST_TIMEOUT_SECONDS,
+    SERVERLESS_STARTUP_POLL_SECONDS,
+    SERVERLESS_STARTUP_TIMEOUT_SECONDS,
+    VOICEBOX_PORT,
+    WILDCARD_HOST,
+)
+
+_HOST = WILDCARD_HOST
+_PORT = VOICEBOX_PORT
+_BASE_URL = build_base_url(_HOST, _PORT)
+_STARTUP_TIMEOUT = SERVERLESS_STARTUP_TIMEOUT_SECONDS
+_STARTUP_POLL = SERVERLESS_STARTUP_POLL_SECONDS
 
 # ── Server lifecycle ──────────────────────────────────────────
 _server_ready = threading.Event()
@@ -55,7 +66,7 @@ def _start_server():
     from backend import config
     from backend.main import app
 
-    config.set_data_dir(os.environ.get("VOICEBOX_DATA_DIR", "/runpod-volume/voicebox"))
+    config.set_data_dir(DATA_DIR)
 
     def _run():
         uvicorn.run(app, host=_HOST, port=_PORT, log_level="info")
@@ -72,7 +83,7 @@ def _wait_for_server():
     deadline = time.time() + _STARTUP_TIMEOUT
     while time.time() < deadline:
         try:
-            r = httpx.get(f"{_BASE_URL}/health", timeout=5)
+            r = httpx.get(f"{_BASE_URL}{HEALTH_PATH}", timeout=5)
             if r.status_code == 200:
                 logger.info("Voicebox server is ready")
                 _server_ready.set()
@@ -116,7 +127,7 @@ def handler(job: dict) -> dict:
     url = f"{_BASE_URL}{path}"
 
     try:
-        with httpx.Client(timeout=600) as client:
+        with httpx.Client(timeout=SERVERLESS_REQUEST_TIMEOUT_SECONDS) as client:
             response = client.request(
                 method=method,
                 url=url,
@@ -152,7 +163,7 @@ def handler(job: dict) -> dict:
         }
 
     except httpx.TimeoutException:
-        return {"error": "Request to voicebox server timed out (600s)"}
+        return {"error": f"Request to voicebox server timed out ({SERVERLESS_REQUEST_TIMEOUT_SECONDS}s)"}
     except Exception as e:
         return {"error": f"Request failed: {e}"}
 
