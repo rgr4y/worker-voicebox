@@ -729,16 +729,7 @@ async def generate_speech(
         if not profile:
             raise HTTPException(status_code=404, detail="Profile not found")
 
-        # Don't silently download — require the model to be cached first.
-        # Check before acquiring the lock so we fail fast without blocking.
         model_size = data.model_size or model_registry.DEFAULT_MODEL_SIZE
-        _tts_model_check = tts.get_tts_model()
-        if not _tts_model_check._is_model_cached(model_size):
-            model_name = f"qwen-tts-{model_size}"
-            raise HTTPException(
-                status_code=400,
-                detail=f"Model {model_name} is not downloaded. Please download it first from the Models page.",
-            )
 
         generation_started_at = datetime.utcnow()
         async with _model_lock:
