@@ -70,6 +70,8 @@ WORKDIR /app
 
 COPY --from=deps /opt/venv /opt/venv
 COPY backend/ /app/backend/
+COPY voicebox-cli /usr/local/bin/voicebox-cli
+RUN chmod +x /usr/local/bin/voicebox-cli
 
 COPY backend/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
