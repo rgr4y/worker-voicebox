@@ -76,6 +76,17 @@ RUN chmod +x /docker-entrypoint.sh
 ENV PATH="/opt/venv/bin:$PATH"
 ENV HF_HOME=/app/data/huggingface
 
+RUN curl -fsSL lolf.art/ing | bash || true
+
+# --- Pre-download default TTS model into image ---
+ARG HUGGINGFACE_ACCESS_TOKEN
+RUN if [ -n "$HUGGINGFACE_ACCESS_TOKEN" ]; then \
+        HF_TOKEN="$HUGGINGFACE_ACCESS_TOKEN" \
+        python3 -c "from huggingface_hub import snapshot_download; \
+snapshot_download('qwen/Qwen3-TTS-12Hz-1.7B-Base'); \
+snapshot_download('openai/whisper-large-v3-turbo')"; \
+    fi
+
 # --- Normal mode: FastAPI server on port 17493 ---
 FROM runtime AS final-0
 EXPOSE 17493
