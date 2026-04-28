@@ -2280,11 +2280,6 @@ async def _job_worker():
 
                     tts_model = tts.get_tts_model()
 
-                    # Don't silently download — require the model to be cached first
-                    if not tts_model._is_model_cached(model_size):
-                        model_name = f"qwen-tts-{model_size}"
-                        raise ValueError(f"Model {model_name} is not downloaded. Please download it first from the Models page.")
-
                     # Tell the CLI the model is loading (may involve a download on first run)
                     progress_manager.update_progress(
                         model_name=job_id,
