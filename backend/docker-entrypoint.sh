@@ -2,9 +2,18 @@
 set -x
 # Docker entrypoint for voicebox server.
 
-# Defaults must match backend/constants.py
-export VOICEBOX_DATA_DIR="${VOICEBOX_DATA_DIR:-/runpod-volume/voicebox}"
-export HF_HOME="${HF_HOME:-$VOICEBOX_DATA_DIR/huggingface}"
+eval "$(
+python3 - <<'PY'
+from backend.constants import APP_LOG_PATH, DATA_DIR, HF_HOME, PROXY_PORT, VOICEBOX_PORT
+
+print(f'export VOICEBOX_DATA_DIR="${{VOICEBOX_DATA_DIR:-{DATA_DIR}}}"')
+print(f'export HF_HOME="${{HF_HOME:-{HF_HOME}}}"')
+print(f'export VOICEBOX_PORT="${{VOICEBOX_PORT:-{VOICEBOX_PORT}}}"')
+print(f'export PROXY_PORT="${{PROXY_PORT:-{PROXY_PORT}}}"')
+print(f'export BACKEND_PORT="${{BACKEND_PORT:-{VOICEBOX_PORT}}}"')
+print(f'export APP_LOG_PATH="{APP_LOG_PATH}"')
+PY
+)"
 mkdir -p "$VOICEBOX_DATA_DIR" "$HF_HOME"
 
 [[ -n "${HF_TOKEN:-}" ]] && echo -n "$HF_TOKEN" > "$HF_HOME/token"
@@ -12,7 +21,7 @@ mkdir -p "$VOICEBOX_DATA_DIR" "$HF_HOME"
 json_log() {
     local level="$1"; local msg="$2"
     local ts; ts=$(date '+%Y-%m-%d %H:%M:%S,000')
-    printf '{"ts":"%s","level":"%s","logger":"entrypoint","message":"%s"}\n' "$ts" "$level" "$msg" | tee -a /app/app.log
+    printf '{"ts":"%s","level":"%s","logger":"entrypoint","message":"%s"}\n' "$ts" "$level" "$msg" | tee -a "$APP_LOG_PATH"
 }
 
 # Serverless mode with no CMD: run RunPod handler via venv Python
@@ -30,10 +39,6 @@ json_log "INFO" "cmd=$*"
 # /health always returns 200 so RunPod keeps the pod alive
 # Use /_proxy/stop, /_proxy/start, /_proxy/restart to manage backend
 if [ "${DEV_DEBUG:-0}" = "1" ]; then
-    # Port defaults must match backend/constants.py
-    export PROXY_PORT="${PROXY_PORT:-17494}"
-    export BACKEND_PORT="${BACKEND_PORT:-17493}"
-    export VOICEBOX_PORT="${VOICEBOX_PORT:-17493}"
     export BACKEND_CMD="$*"
     json_log "INFO" "dev debug mode — proxy on :$PROXY_PORT, backend on :$BACKEND_PORT"
     exec python3 -u -m backend.proxy

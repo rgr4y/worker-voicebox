@@ -11,6 +11,8 @@ import httpx
 from typing import List, Dict, Optional
 from datetime import datetime
 
+from backend import model_registry
+
 
 async def monitor_sse_stream(model_name: str, timeout: int = 120):
     """Monitor SSE stream for a model during generation."""
@@ -152,7 +154,7 @@ async def test_generation_with_cached_model():
     print("=" * 80)
 
     model_size = "1.7B"
-    model_name = f"qwen-tts-{model_size}"
+    model_name = model_registry.get_model_name(model_size)
 
     # Get a profile
     profile_id = await get_first_profile()
@@ -205,7 +207,7 @@ async def test_generation_with_fresh_download():
 
     # Use a different model size to force download
     model_size = "0.6B"  # Smaller model for faster testing
-    model_name = f"qwen-tts-{model_size}"
+    model_name = model_registry.get_model_name(model_size)
 
     # Get a profile
     profile_id = await get_first_profile()

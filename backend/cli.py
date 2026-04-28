@@ -28,6 +28,9 @@ from .constants import (
     GENERATE_STREAM_PATH,
     HEALTH_PATH,
     HISTORY_PATH,
+    JOB_STATUS_COMPLETE,
+    JOB_STATUS_ERROR,
+    LATEST_HISTORY_RESULT_LIMIT,
     LOCALHOST,
     PROFILES_IMPORT_PATH,
     PROFILES_PATH,
@@ -157,7 +160,7 @@ def _stop_server():
 
 def cmd_voices(args):
     """List all voice profiles."""
-    resp = api("get", args.url, "/profiles")
+    resp = api("get", args.url, PROFILES_PATH)
     profiles = resp.json()
     if not profiles:
         print("No voice profiles found. Import one with: voicebox import <file.zip>")
@@ -177,9 +180,9 @@ def cmd_import(args):
 
     print(f"Importing {zip_path.name}...")
     with open(zip_path, "rb") as f:
-        resp = api("post", args.url, "/profiles/import",
+        resp = api("post", args.url, PROFILES_IMPORT_PATH,
                     files={"file": (zip_path.name, f, "application/zip")},
-                    timeout=60)
+                    timeout=CLI_FILE_TRANSFER_TIMEOUT_SECONDS)
     profile = resp.json()
     print(f"Imported: {profile['name']} ({profile['id']})")
 
@@ -249,20 +252,26 @@ def cmd_generate(args):
             bar = "#" * filled + "-" * (bar_len - filled)
             print(f"\r[{bar}] {pct:.0f}%", end="", flush=True)
 
-            if status in ("complete", "error"):
+            if status in (JOB_STATUS_COMPLETE, JOB_STATUS_ERROR):
                 print()  # newline after progress bar
                 final_data = data
                 break
 
     elapsed = time.time() - start
 
-    if final_data and final_data.get("status") == "error":
+    if final_data and final_data.get("status") == JOB_STATUS_ERROR:
         error_msg = final_data.get("error", "Unknown error")
         print(f"Generation failed: {error_msg}", file=sys.stderr)
         sys.exit(1)
 
     # Fetch latest history entry to get the generation result
-    history_resp = api("get", args.url, "/history", params={"limit": 1}, timeout=10)
+    history_resp = api(
+        "get",
+        args.url,
+        HISTORY_PATH,
+        params={"limit": LATEST_HISTORY_RESULT_LIMIT},
+        timeout=CLI_STREAM_START_TIMEOUT_SECONDS,
+    )
     history_data = history_resp.json()
     if history_data["items"]:
         result = history_data["items"][0]
@@ -274,7 +283,12 @@ def cmd_generate(args):
     # Download wav then convert to m4a
     tag = str(int(time.time()))[-5:]
     wav_path = f"output_{tag}.wav"
-    dl = api("get", args.url, f"/audio/{result['id']}", timeout=60)
+    dl = api(
+        "get",
+        args.url,
+        AUDIO_PATH_TEMPLATE.format(generation_id=result["id"]),
+        timeout=CLI_FILE_TRANSFER_TIMEOUT_SECONDS,
+    )
     Path(wav_path).write_bytes(dl.content)
 
     if not shutil.which("ffmpeg"):
@@ -299,7 +313,7 @@ def cmd_generate(args):
 
 def cmd_health(args):
     """Check server health."""
-    resp = api("get", args.url, "/health")
+    resp = api("get", args.url, HEALTH_PATH)
     h = resp.json()
     print(f"Status:       {h['status']}")
     print(f"Model loaded: {h['model_loaded']}")
@@ -312,7 +326,7 @@ def cmd_health(args):
 # --- Profile resolution (shared) ---
 
 def resolve_profile(base_url, voice_name):
-    resp = api("get", base_url, "/profiles")
+    resp = api("get", base_url, PROFILES_PATH)
     profiles = resp.json()
     if not profiles:
         print("Error: no voice profiles found.", file=sys.stderr)
@@ -360,7 +374,7 @@ def main():
 
     # server
     p_server = sub.add_parser("server", help="Start the backend server")
-    p_server.add_argument("--port", type=int, default=17493, help="Port (default: 17493)")
+    p_server.add_argument("--port", type=int, default=VOICEBOX_PORT_DEFAULT, help=f"Port (default: {VOICEBOX_PORT_DEFAULT})")
     p_server.add_argument("--data-dir", help="Data directory")
     p_server.add_argument("-d", "--detach", action="store_true", help="Run in background (daemon)")
     p_server.add_argument("--stop", action="store_true", help="Stop a detached server")

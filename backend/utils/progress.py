@@ -79,7 +79,7 @@ class ProgressManager:
         progress changes by at least THROTTLE_PROGRESS_DELTA percent.
 
         Args:
-            model_name: Name of the model (e.g., "qwen-tts-1.7B", "whisper-base")
+            model_name: Name of the model (e.g., "qwen-tts-1.7b", "whisper-base")
             current: Current bytes downloaded
             total: Total bytes to download
             filename: Current file being downloaded

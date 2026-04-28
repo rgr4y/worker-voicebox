@@ -24,15 +24,65 @@ from pathlib import Path
 import uuid
 import os
 
+from .constants import (
+    API_BIND_PORT_DEFAULT,
+    AUTH_ME_PATH,
+    AUTH_UNAVAILABLE_MESSAGE,
+    AUTO_RESTART_MINUTES_DEFAULT,
+    CANCELLED_BY_USER_MESSAGE,
+    DEFAULT_JOB_STATUS_FILTER,
+    ENV_AUTO_RESTART_MINUTES,
+    ENV_HSA_OVERRIDE_GFX_VERSION,
+    ENV_MIOPEN_LOG_LEVEL,
+    ENV_PRELOAD_MODELS,
+    FORCE_CANCELLED_BY_USER_MESSAGE,
+    GENERATING_JOB_TIMEOUT_MINUTES,
+    GENERATION_TIMEOUT_MESSAGE,
+    HEALTH_EXPOSED_HEADERS,
+    HEALTH_HEADER_BACKEND,
+    HEALTH_HEADER_GPU_TYPE,
+    HEALTH_HEADER_MODEL_LOADED,
+    HEALTH_HEADER_MODEL_SIZE,
+    HEALTH_PATH,
+    HEALTH_RESPONSE_DELAY_SECONDS,
+    HEADER_X_FORWARDED_FOR,
+    HEADER_X_REAL_IP,
+    HSA_OVERRIDE_GFX_VERSION_DEFAULT,
+    JOB_ACTIVE_STATUSES,
+    JOB_RUNNING_STATUSES,
+    JOB_STATUS_CANCELLING,
+    JOB_STATUS_CANCELLED,
+    JOB_STATUS_COMPLETE,
+    JOB_STATUS_DELETED,
+    JOB_STATUS_ERROR,
+    JOB_STATUS_GENERATING,
+    JOB_STATUS_LOADING,
+    JOB_STATUS_QUEUED,
+    JOB_STATUS_TIMEOUT,
+    JOB_WORKER_POLL_SECONDS,
+    LOCALHOST,
+    MAX_ACTIVE_JOBS_PER_USER,
+    MIOPEN_LOG_LEVEL_DEFAULT,
+    MODEL_PREFS_FILENAME,
+    QUEUED_JOB_TIMEOUT_MINUTES,
+    QUEUE_TIMEOUT_MESSAGE,
+    SHUTDOWN_PATH,
+    SHUTTING_DOWN_MESSAGE,
+    SSE_ACCEL_BUFFERING_DISABLED,
+    SSE_CACHE_CONTROL,
+    SSE_CONNECTION,
+    UNKNOWN_IP,
+)
+
 # Set HSA_OVERRIDE_GFX_VERSION for AMD GPUs that aren't officially listed in ROCm
 # (e.g., RX 580 is gfx803, RX 6600 is gfx1032 which maps to gfx1030 target)
 # This must be set BEFORE any torch.cuda calls
-if not os.environ.get("HSA_OVERRIDE_GFX_VERSION"):
-    os.environ["HSA_OVERRIDE_GFX_VERSION"] = "10.3.0"
+if not os.environ.get(ENV_HSA_OVERRIDE_GFX_VERSION):
+    os.environ[ENV_HSA_OVERRIDE_GFX_VERSION] = HSA_OVERRIDE_GFX_VERSION_DEFAULT
 
 # Suppress noisy MIOpen workspace warnings on AMD GPUs
-if not os.environ.get("MIOPEN_LOG_LEVEL"):
-    os.environ["MIOPEN_LOG_LEVEL"] = "4"
+if not os.environ.get(ENV_MIOPEN_LOG_LEVEL):
+    os.environ[ENV_MIOPEN_LOG_LEVEL] = MIOPEN_LOG_LEVEL_DEFAULT
 
 import signal
 
@@ -68,11 +118,8 @@ _model_lock = asyncio.Lock()
 # Event to wake the job worker when a new job is queued
 _job_signal = asyncio.Event()
 _cancel_requested_jobs: set[str] = set()
-_MAX_ACTIVE_JOBS_PER_USER = 3
-_QUEUED_JOB_TIMEOUT_MINUTES = 15
-_GENERATING_JOB_TIMEOUT_MINUTES = 5
 
-_AUTO_RESTART_MINUTES = int(os.environ.get("AUTO_RESTART_MINUTES", "0"))
+_AUTO_RESTART_MINUTES = int(os.environ.get(ENV_AUTO_RESTART_MINUTES, str(AUTO_RESTART_MINUTES_DEFAULT)))
 _tracemalloc_baseline = None
 
 
@@ -80,17 +127,17 @@ def _expire_old_queued_jobs(db: Session):
     """Expire queued jobs that have sat too long without starting."""
     from datetime import timedelta
 
-    cutoff = datetime.utcnow() - timedelta(minutes=_QUEUED_JOB_TIMEOUT_MINUTES)
+    cutoff = datetime.utcnow() - timedelta(minutes=QUEUED_JOB_TIMEOUT_MINUTES)
     stale_queued = db.query(DBGenerationJob).filter(
-        DBGenerationJob.status == "queued",
+        DBGenerationJob.status == JOB_STATUS_QUEUED,
         DBGenerationJob.created_at < cutoff,
     ).all()
     for job in stale_queued:
-        job.status = "timeout"
-        job.error = "Queue timeout"
+        job.status = JOB_STATUS_TIMEOUT
+        job.error = QUEUE_TIMEOUT_MESSAGE
         job.completed_at = datetime.utcnow()
         try:
-            get_progress_manager().mark_error(job.id, "Queue timeout")
+            get_progress_manager().mark_error(job.id, QUEUE_TIMEOUT_MESSAGE)
         except Exception:
             pass
     if stale_queued:
@@ -99,15 +146,15 @@ def _expire_old_queued_jobs(db: Session):
 
 def _extract_request_ip(request: Request) -> str:
     """Best-effort client IP extraction, including proxy headers."""
-    forwarded_for = request.headers.get("x-forwarded-for")
+    forwarded_for = request.headers.get(HEADER_X_FORWARDED_FOR)
     if forwarded_for:
         return forwarded_for.split(",")[0].strip()
-    real_ip = request.headers.get("x-real-ip")
+    real_ip = request.headers.get(HEADER_X_REAL_IP)
     if real_ip:
         return real_ip.strip()
     if request.client and request.client.host:
         return request.client.host
-    return "unknown"
+    return UNKNOWN_IP
 
 # CORS middleware — allow_credentials=False because we don't use cookies,
 # and allow_origins=["*"] is invalid with credentials per the CORS spec.
@@ -117,7 +164,7 @@ app.add_middleware(
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["X-Health-Model-Loaded", "X-Health-Model-Size", "X-Health-GPU-Type", "X-Health-Backend"],
+    expose_headers=HEALTH_EXPOSED_HEADERS,
 )
 
 
@@ -128,13 +175,13 @@ async def health_piggyback_middleware(request, call_next):
     try:
         tts_model = tts.get_tts_model()
         loaded = tts_model.is_loaded()
-        response.headers["X-Health-Model-Loaded"] = "1" if loaded else "0"
+        response.headers[HEALTH_HEADER_MODEL_LOADED] = "1" if loaded else "0"
         if loaded:
             size = getattr(tts_model, '_current_model_size', None)
             if size:
-                response.headers["X-Health-Model-Size"] = size
+                response.headers[HEALTH_HEADER_MODEL_SIZE] = size
         backend_type = get_backend_type()
-        response.headers["X-Health-Backend"] = backend_type
+        response.headers[HEALTH_HEADER_BACKEND] = backend_type
         gpu_type = None
         if backend_type == "mlx":
             gpu_type = "Metal"
@@ -143,7 +190,7 @@ async def health_piggyback_middleware(request, call_next):
         elif torch.cuda.is_available():
             gpu_type = "CUDA"
         if gpu_type:
-            response.headers["X-Health-GPU-Type"] = gpu_type
+            response.headers[HEALTH_HEADER_GPU_TYPE] = gpu_type
     except Exception:
         pass
     return response
@@ -159,24 +206,24 @@ async def root():
     return {"message": "voicebox API", "version": __version__}
 
 
-@app.post("/shutdown")
+@app.post(SHUTDOWN_PATH)
 async def shutdown():
     """Gracefully shutdown the server."""
     async def shutdown_async():
-        await asyncio.sleep(0.1)  # Give response time to send
+        await asyncio.sleep(HEALTH_RESPONSE_DELAY_SECONDS)  # Give response time to send
         os.kill(os.getpid(), signal.SIGTERM)
 
     asyncio.create_task(shutdown_async())
-    return {"message": "Shutting down..."}
+    return {"message": SHUTTING_DOWN_MESSAGE}
 
 
-@app.get("/auth/me")
+@app.get(AUTH_ME_PATH)
 async def auth_me_stub():
     """Stub for chickenbox OAuth — voicebox backend has no auth."""
-    raise HTTPException(status_code=401, detail="Authentication not available")
+    raise HTTPException(status_code=401, detail=AUTH_UNAVAILABLE_MESSAGE)
 
 
-@app.get("/health", response_model=models.HealthResponse)
+@app.get(HEALTH_PATH, response_model=models.HealthResponse)
 async def health():
     """Health check endpoint."""
     from huggingface_hub import constants as hf_constants
@@ -649,22 +696,21 @@ async def generate_speech(
 
         # Enforce per-user queue cap (queued/generating/cancelling).
         user_id = (data.request_user_id or "").strip() or None
-        active_statuses = ["queued", "generating", "cancelling"]
         if user_id:
             active_count = db.query(DBGenerationJob).filter(
-                DBGenerationJob.status.in_(active_statuses),
+                DBGenerationJob.status.in_(JOB_ACTIVE_STATUSES),
                 DBGenerationJob.request_user_id == user_id,
             ).count()
         else:
             active_count = db.query(DBGenerationJob).filter(
-                DBGenerationJob.status.in_(active_statuses),
+                DBGenerationJob.status.in_(JOB_ACTIVE_STATUSES),
                 DBGenerationJob.request_ip == request_ip,
             ).count()
 
-        if active_count >= _MAX_ACTIVE_JOBS_PER_USER:
+        if active_count >= MAX_ACTIVE_JOBS_PER_USER:
             raise HTTPException(
                 status_code=429,
-                detail=f"Queue limit reached ({_MAX_ACTIVE_JOBS_PER_USER} active jobs per user).",
+                detail=f"Queue limit reached ({MAX_ACTIVE_JOBS_PER_USER} active jobs per user).",
             )
 
         # --- Async (streaming) mode — create a job row, worker picks it up ---
@@ -679,7 +725,7 @@ async def generate_speech(
             request_user_id=data.request_user_id,
             request_user_first_name=data.request_user_first_name,
             request_ip=request_ip,
-            status="queued",
+            status=JOB_STATUS_QUEUED,
         )
         db.add(job)
         db.commit()
@@ -690,7 +736,7 @@ async def generate_speech(
             model_name=job_id,
             current=0,
             total=100,
-            status="queued",
+            status=JOB_STATUS_QUEUED,
         )
 
         # Wake the worker
@@ -701,7 +747,7 @@ async def generate_speech(
             status_code=202,
             content=models.GenerationStartResponse(
                 generation_id=job_id,
-                status="queued",
+                status=JOB_STATUS_QUEUED,
             ).model_dump(),
         )
 
@@ -709,7 +755,7 @@ async def generate_speech(
 
     # Check DB for any actively generating job
     active = db.query(DBGenerationJob).filter(
-        DBGenerationJob.status == "generating"
+        DBGenerationJob.status == JOB_STATUS_GENERATING
     ).first()
     if active or _model_lock.locked():
         raise HTTPException(
@@ -794,9 +840,9 @@ async def generation_progress(generation_id: str):
         event_generator(),
         media_type="text/event-stream",
         headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
+            "Cache-Control": SSE_CACHE_CONTROL,
+            "Connection": SSE_CONNECTION,
+            "X-Accel-Buffering": SSE_ACCEL_BUFFERING_DISABLED,
         },
     )
 
@@ -805,7 +851,7 @@ async def generation_progress(generation_id: str):
 async def generation_busy(db: Session = Depends(get_db)):
     """Check if a generation is currently running (status=generating, not queued)."""
     active = db.query(DBGenerationJob).filter(
-        DBGenerationJob.status.in_(["generating", "cancelling"])
+        DBGenerationJob.status.in_(JOB_RUNNING_STATUSES)
     ).first()
     return {"busy": active is not None}
 
@@ -816,7 +862,7 @@ async def list_pending_jobs(db: Session = Depends(get_db)):
     jobs = db.query(DBGenerationJob, DBVoiceProfile.name).join(
         DBVoiceProfile, DBGenerationJob.profile_id == DBVoiceProfile.id
     ).filter(
-        DBGenerationJob.status.in_(["queued", "generating", "cancelling"])
+        DBGenerationJob.status.in_(JOB_ACTIVE_STATUSES)
     ).order_by(DBGenerationJob.created_at).all()
 
     return [
@@ -847,7 +893,7 @@ async def list_pending_jobs(db: Session = Depends(get_db)):
 async def list_jobs(
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
-    status: Optional[str] = Query(default="queued,generating,cancelling,complete"),
+    status: Optional[str] = Query(default=DEFAULT_JOB_STATUS_FILTER),
     db: Session = Depends(get_db),
 ):
     """List jobs with optional status filter (comma-separated) and pagination. Default excludes deleted jobs."""
@@ -856,9 +902,9 @@ async def list_jobs(
     ).outerjoin(
         DBGeneration, DBGenerationJob.generation_id == DBGeneration.id
     ).filter(
-        DBGenerationJob.status != "deleted"
+        DBGenerationJob.status != JOB_STATUS_DELETED
     ).filter(
-        (DBGenerationJob.status != "complete") | (DBGeneration.id.isnot(None))
+        (DBGenerationJob.status != JOB_STATUS_COMPLETE) | (DBGeneration.id.isnot(None))
     )
 
     if status:
@@ -904,19 +950,19 @@ async def cancel_job(job_id: str, db: Session = Depends(get_db)):
     progress_manager = get_progress_manager()
     now = datetime.utcnow()
 
-    if job.status == "queued":
-        job.status = "cancelled"
-        job.error = "Cancelled by user"
+    if job.status == JOB_STATUS_QUEUED:
+        job.status = JOB_STATUS_CANCELLED
+        job.error = CANCELLED_BY_USER_MESSAGE
         job.completed_at = now
         db.commit()
-        progress_manager.mark_error(job_id, "Cancelled by user")
-        return {"status": "cancelled"}
+        progress_manager.mark_error(job_id, CANCELLED_BY_USER_MESSAGE)
+        return {"status": JOB_STATUS_CANCELLED}
 
-    if job.status in ("generating", "cancelling"):
+    if job.status in JOB_RUNNING_STATUSES:
         _cancel_requested_jobs.add(job_id)
-        job.status = "cancelling"
+        job.status = JOB_STATUS_CANCELLING
         db.commit()
-        return {"status": "cancelling"}
+        return {"status": JOB_STATUS_CANCELLING}
 
     return {"status": job.status}
 
@@ -927,9 +973,9 @@ async def force_cancel_job(job_id: str, db: Session = Depends(get_db)):
     _cancel_requested_jobs.add(job_id)
 
     job = db.query(DBGenerationJob).filter(DBGenerationJob.id == job_id).first()
-    if job and job.status in ("queued", "generating", "cancelling"):
-        job.status = "cancelled"
-        job.error = "Force-cancelled by user"
+    if job and job.status in JOB_ACTIVE_STATUSES:
+        job.status = JOB_STATUS_CANCELLED
+        job.error = FORCE_CANCELLED_BY_USER_MESSAGE
         job.completed_at = datetime.utcnow()
         db.commit()
 
@@ -939,7 +985,7 @@ async def force_cancel_job(job_id: str, db: Session = Depends(get_db)):
     except Exception:
         pass
 
-    get_progress_manager().mark_error(job_id, "Force-cancelled by user")
+    get_progress_manager().mark_error(job_id, FORCE_CANCELLED_BY_USER_MESSAGE)
     
     # Wake the job worker to process next queued job
     _job_signal.set()
@@ -2103,7 +2149,7 @@ def _get_gpu_status() -> str:
 
 def _get_model_prefs_path() -> Path:
     """Get path to model preferences JSON file."""
-    return config.get_data_dir() / "model_prefs.json"
+    return config.get_data_dir() / MODEL_PREFS_FILENAME
 
 
 def _load_model_prefs() -> dict:
@@ -2137,10 +2183,10 @@ def _cleanup_stale_jobs():
     db = database.SessionLocal()
     try:
         stale = db.query(DBGenerationJob).filter(
-            DBGenerationJob.status.in_(["queued", "generating", "cancelling"])
+            DBGenerationJob.status.in_(JOB_ACTIVE_STATUSES)
         ).all()
         for job in stale:
-            job.status = "timeout"
+            job.status = JOB_STATUS_TIMEOUT
             job.completed_at = datetime.utcnow()
             logger.info(f"[Queue] Marked stale job {job.id} as timeout (server restart)")
         if stale:
@@ -2157,7 +2203,7 @@ async def _job_worker():
         try:
             # Wait for signal or poll every 2s
             try:
-                await asyncio.wait_for(_job_signal.wait(), timeout=2.0)
+                await asyncio.wait_for(_job_signal.wait(), timeout=JOB_WORKER_POLL_SECONDS)
                 _job_signal.clear()
             except asyncio.TimeoutError:
                 pass
@@ -2168,17 +2214,17 @@ async def _job_worker():
                 from datetime import timedelta
                 _expire_old_queued_jobs(db)
 
-                cutoff = datetime.utcnow() - timedelta(minutes=_GENERATING_JOB_TIMEOUT_MINUTES)
+                cutoff = datetime.utcnow() - timedelta(minutes=GENERATING_JOB_TIMEOUT_MINUTES)
                 stuck = db.query(DBGenerationJob).filter(
-                    DBGenerationJob.status.in_(["generating", "cancelling"]),
+                    DBGenerationJob.status.in_(JOB_RUNNING_STATUSES),
                     DBGenerationJob.started_at < cutoff,
                 ).all()
                 for job in stuck:
-                    job.status = "timeout"
-                    job.error = "Generation timeout"
+                    job.status = JOB_STATUS_TIMEOUT
+                    job.error = GENERATION_TIMEOUT_MESSAGE
                     job.completed_at = datetime.utcnow()
                     try:
-                        get_progress_manager().mark_error(job.id, "Generation timeout")
+                        get_progress_manager().mark_error(job.id, GENERATION_TIMEOUT_MESSAGE)
                     except Exception:
                         pass
                     logger.warning(f"[Queue] Job {job.id} timed out (stuck >5 min)")
@@ -2187,20 +2233,20 @@ async def _job_worker():
 
                 # Skip if something is already generating
                 active = db.query(DBGenerationJob).filter(
-                    DBGenerationJob.status.in_(["generating", "cancelling"])
+                    DBGenerationJob.status.in_(JOB_RUNNING_STATUSES)
                 ).first()
                 if active:
                     continue
 
                 # Pick oldest queued job
                 job = db.query(DBGenerationJob).filter(
-                    DBGenerationJob.status == "queued"
+                    DBGenerationJob.status == JOB_STATUS_QUEUED
                 ).order_by(DBGenerationJob.created_at).first()
                 if not job:
                     continue
 
                 # Mark as generating
-                job.status = "generating"
+                job.status = JOB_STATUS_GENERATING
                 job.started_at = datetime.utcnow()
                 db.commit()
 
@@ -2220,7 +2266,7 @@ async def _job_worker():
             finally:
                 db.close()
 
-            logger.info(f"[TTS] Job {job_id} starting generation (ip={request_ip or 'unknown'})")
+            logger.info(f"[TTS] Job {job_id} starting generation (ip={request_ip or UNKNOWN_IP})")
 
             progress_manager = get_progress_manager()
             task_manager = get_task_manager()
@@ -2231,12 +2277,12 @@ async def _job_worker():
                 text=text,
             )
 
-            # Update SSE to "generating" status
+            # Update SSE to the active generation state
             progress_manager.update_progress(
                 model_name=job_id,
                 current=0,
                 total=100,
-                status="generating",
+                status=JOB_STATUS_GENERATING,
             )
 
             gen_db = database.SessionLocal()
@@ -2245,12 +2291,12 @@ async def _job_worker():
                 async with _model_lock:
                     def on_progress(pct):
                         if job_id in _cancel_requested_jobs:
-                            raise RuntimeError("Cancelled by user")
+                            raise RuntimeError(CANCELLED_BY_USER_MESSAGE)
                         progress_manager.update_progress(
                             model_name=job_id,
                             current=int(pct),
                             total=100,
-                            status="generating",
+                            status=JOB_STATUS_GENERATING,
                         )
                         task_manager.update_generation_progress(job_id, pct)
                         # Throttled DB update (~every 5%)
@@ -2276,7 +2322,7 @@ async def _job_worker():
                         model_name=job_id,
                         current=0,
                         total=100,
-                        status="loading",
+                        status=JOB_STATUS_LOADING,
                     )
 
                     # Load the target model BEFORE creating the voice prompt so
@@ -2319,7 +2365,7 @@ async def _job_worker():
                 # Mark job complete
                 job_row = gen_db.query(DBGenerationJob).get(job_id)
                 if job_row:
-                    job_row.status = "complete"
+                    job_row.status = JOB_STATUS_COMPLETE
                     job_row.progress = 100.0
                     job_row.generation_id = generation.id if hasattr(generation, 'id') else None
                     job_row.completed_at = datetime.utcnow()
@@ -2333,15 +2379,15 @@ async def _job_worker():
             except Exception as e:
                 logger.exception(f"[TTS] Job {job_id} failed: {e}")
                 is_cancelled = job_id in _cancel_requested_jobs or "cancel" in str(e).lower()
-                progress_manager.mark_error(job_id, "Cancelled by user" if is_cancelled else str(e))
+                progress_manager.mark_error(job_id, CANCELLED_BY_USER_MESSAGE if is_cancelled else str(e))
                 task_manager.complete_generation(job_id)
 
                 err_db = database.SessionLocal()
                 try:
                     err_job = err_db.query(DBGenerationJob).get(job_id)
                     if err_job:
-                        err_job.status = "cancelled" if is_cancelled else "error"
-                        err_job.error = ("Cancelled by user" if is_cancelled else str(e))[:1000]
+                        err_job.status = JOB_STATUS_CANCELLED if is_cancelled else JOB_STATUS_ERROR
+                        err_job.error = (CANCELLED_BY_USER_MESSAGE if is_cancelled else str(e))[:1000]
                         err_job.completed_at = datetime.utcnow()
                         err_db.commit()
                 finally:
@@ -2467,7 +2513,7 @@ async def _startup():
 
 async def _preload_models():
     """Preload TTS model at startup if PRELOAD_MODELS=1."""
-    if os.environ.get("PRELOAD_MODELS", "") not in ("1", "true"):
+    if os.environ.get(ENV_PRELOAD_MODELS, "") not in ("1", "true"):
         logger.info("Model preload skipped (set PRELOAD_MODELS=1 to enable)")
         return
 
@@ -2501,13 +2547,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--host",
         type=str,
-        default="127.0.0.1",
+        default=LOCALHOST,
         help="Host to bind to (use 0.0.0.0 for remote access)",
     )
     parser.add_argument(
         "--port",
         type=int,
-        default=8000,
+        default=API_BIND_PORT_DEFAULT,
         help="Port to bind to",
     )
     parser.add_argument(

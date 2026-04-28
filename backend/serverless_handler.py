@@ -14,7 +14,7 @@ Local testing:
 import os
 
 # Must be set before any backend imports so backends disable idle timers at module load time
-os.environ["SERVERLESS"] = "1"
+os.environ[ENV_SERVERLESS] = "1"
 
 import time
 import logging
@@ -25,13 +25,22 @@ import httpx
 import runpod
 import uvicorn
 
+# Set up JSON logging FIRST, before any backend imports that might log
+from backend.utils.logging_config import configure_json_logging
+configure_json_logging()
 logger = logging.getLogger(__name__)
 
 # ── Configuration ─────────────────────────────────────────────
 from backend.constants import (
     build_base_url,
     DATA_DIR,
+    ENV_SERVERLESS,
     HEALTH_PATH,
+    SERVERLESS_BINARY_CONTENT_TYPES,
+    SERVERLESS_HEALTHCHECK_TIMEOUT_SECONDS,
+    SERVERLESS_HTTP_METHOD_DEFAULT,
+    SERVERLESS_JSON_METHODS,
+    SERVERLESS_MISSING_PATH_MESSAGE,
     SERVERLESS_REQUEST_TIMEOUT_SECONDS,
     SERVERLESS_STARTUP_POLL_SECONDS,
     SERVERLESS_STARTUP_TIMEOUT_SECONDS,
@@ -59,17 +68,13 @@ def _start_server():
 
     _server_ready.clear()
 
-    # Configure JSON logging before any imports so all loggers use it from the start
-    from backend.utils.logging_config import configure_json_logging
-    configure_json_logging()
-
     from backend import config
     from backend.main import app
 
     config.set_data_dir(DATA_DIR)
 
     def _run():
-        uvicorn.run(app, host=_HOST, port=_PORT, log_level="info")
+        uvicorn.run(app, host=_HOST, port=_PORT, log_level="info", log_config=None)
 
     _server_thread = threading.Thread(target=_run, daemon=True)
     _server_thread.start()

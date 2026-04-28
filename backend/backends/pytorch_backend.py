@@ -154,7 +154,7 @@ class PyTorchTTSBackend:
         try:
             progress_manager = get_progress_manager()
             task_manager = get_task_manager()
-            model_name = f"qwen-tts-{model_size}"
+            model_name = model_registry.get_model_name(model_size)
 
             # Set up progress callback and tracker
             # If cached: filter out non-download progress (like "Segment 1/1" during generation)
@@ -218,7 +218,7 @@ class PyTorchTTSBackend:
             logger.error(f"Error: qwen_tts package not found. Install with: pip install git+https://github.com/QwenLM/Qwen3-TTS.git")
             progress_manager = get_progress_manager()
             task_manager = get_task_manager()
-            model_name = f"qwen-tts-{model_size}"
+            model_name = model_registry.get_model_name(model_size)
             progress_manager.mark_error(model_name, str(e))
             task_manager.error_download(model_name, str(e))
             raise
@@ -227,7 +227,7 @@ class PyTorchTTSBackend:
             logger.info(f"Tip: The model will be automatically downloaded from HuggingFace Hub on first use.")
             progress_manager = get_progress_manager()
             task_manager = get_task_manager()
-            model_name = f"qwen-tts-{model_size}"
+            model_name = model_registry.get_model_name(model_size)
             progress_manager.mark_error(model_name, str(e))
             task_manager.error_download(model_name, str(e))
             raise

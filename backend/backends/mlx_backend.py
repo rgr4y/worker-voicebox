@@ -165,7 +165,7 @@ class MLXTTSBackend:
             # Set up progress tracking
             progress_manager = get_progress_manager()
             task_manager = get_task_manager()
-            model_name = f"qwen-tts-{model_size}"
+            model_name = model_registry.get_model_name(model_size)
             
             # Set up progress callback
             # If cached: filter out non-download progress
@@ -224,7 +224,7 @@ class MLXTTSBackend:
             self._current_model_size = None
             progress_manager = get_progress_manager()
             task_manager = get_task_manager()
-            model_name = f"qwen-tts-{model_size}"
+            model_name = model_registry.get_model_name(model_size)
             progress_manager.mark_error(model_name, str(e))
             task_manager.error_download(model_name, str(e))
             raise
@@ -234,7 +234,7 @@ class MLXTTSBackend:
             self._current_model_size = None
             progress_manager = get_progress_manager()
             task_manager = get_task_manager()
-            model_name = f"qwen-tts-{model_size}"
+            model_name = model_registry.get_model_name(model_size)
             progress_manager.mark_error(model_name, str(e))
             task_manager.error_download(model_name, str(e))
             raise

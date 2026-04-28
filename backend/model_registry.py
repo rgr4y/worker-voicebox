@@ -17,21 +17,21 @@ from typing import Literal
 
 TTS_MODELS: dict[str, dict] = {
     "1.7B": {
-        "model_name": "qwen-tts-1.7B",
+        "model_name": "qwen-tts-1.7b",
         "display_name": "Qwen TTS 1.7B",
         "description": "Higher quality",
         "hf_repo": {
-            "pytorch": "Qwen/Qwen3-TTS-12Hz-1.7B-Base",
-            "mlx": "mlx-community/Qwen3-TTS-12Hz-1.7B-Base-4bit",
+            "pytorch": "qwen/qwen3-tts-12hz-1.7b-base",
+            "mlx": "mlx-community/qwen3-tts-12hz-1.7b-base-4bit",
         },
     },
     "0.6B": {
-        "model_name": "qwen-tts-0.6B",
+        "model_name": "qwen-tts-0.6b",
         "display_name": "Qwen TTS 0.6B",
         "description": "Faster",
         "hf_repo": {
-            "pytorch": "Qwen/Qwen3-TTS-12Hz-0.6B-Base",
-            "mlx": "mlx-community/Qwen3-TTS-12Hz-0.6B-Base-4bit",
+            "pytorch": "qwen/qwen3-tts-12hz-0.6b-base",
+            "mlx": "mlx-community/qwen3-tts-12hz-0.6b-base-4bit",
         },
     },
 }
@@ -51,7 +51,7 @@ def get_tts_sizes() -> list[str]:
 
 
 def get_model_name(size: str) -> str:
-    """Map a size key to the API model name, e.g. "1.7B" -> "qwen-tts-1.7B"."""
+    """Map a size key to the API model name, e.g. "1.7B" -> "qwen-tts-1.7b"."""
     return TTS_MODELS[size]["model_name"]
 
 
@@ -71,7 +71,7 @@ def get_hf_repo(size: str, backend: BackendType) -> str:
 
 
 def get_size_from_model_name(model_name: str) -> str | None:
-    """Reverse-lookup: "qwen-tts-1.7B" -> "1.7B". Returns None if not found."""
+    """Reverse-lookup: "qwen-tts-1.7b" -> "1.7B". Returns None if not found."""
     for size, info in TTS_MODELS.items():
         if info["model_name"] == model_name:
             return size
