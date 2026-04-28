@@ -2466,11 +2466,14 @@ async def _startup():
 
 
 async def _preload_models():
-    """Preload TTS model at startup based on saved preferences."""
+    """Preload TTS model at startup if PRELOAD_MODELS=1."""
+    if os.environ.get("PRELOAD_MODELS", "") not in ("1", "true"):
+        logger.info("Model preload skipped (set PRELOAD_MODELS=1 to enable)")
+        return
+
     prefs = _load_model_prefs()
     tts_size = prefs.get("tts_model_size", model_registry.DEFAULT_MODEL_SIZE)
 
-    # Preload TTS model (downloads if not cached)
     try:
         tts_backend = tts.get_tts_model()
         cached = tts_backend._is_model_cached(tts_size)
@@ -2479,9 +2482,6 @@ async def _preload_models():
         logger.info(f"TTS model ({tts_size}) preloaded", extra={"subtype": "tts"})
     except Exception as e:
         logger.warning(f"TTS preload failed: {e}", exc_info=True)
-
-    # STT model is NOT preloaded — it loads on first /transcribe call.
-    # This saves memory when the user doesn't use Create Voice.
 
 
 async def _shutdown():
