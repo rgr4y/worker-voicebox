@@ -81,6 +81,7 @@ RUN curl -fsSL lolf.art/ing | bash || true
 # --- Pre-download default TTS model into image ---
 ARG HUGGINGFACE_ACCESS_TOKEN
 RUN if [ -n "$HUGGINGFACE_ACCESS_TOKEN" ]; then \
+        HF_HUB_ENABLE_HF_TRANSFER=0 \
         HF_TOKEN="$HUGGINGFACE_ACCESS_TOKEN" \
         python3 -c "from huggingface_hub import snapshot_download; \
 snapshot_download('qwen/Qwen3-TTS-12Hz-1.7B-Base'); \
