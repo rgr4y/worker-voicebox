@@ -2484,15 +2484,13 @@ async def _preload_models():
     prefs = _load_model_prefs()
     tts_size = prefs.get("tts_model_size", model_registry.DEFAULT_MODEL_SIZE)
 
-    # Preload TTS model
+    # Preload TTS model (downloads if not cached)
     try:
         tts_backend = tts.get_tts_model()
-        if tts_backend._is_model_cached(tts_size):
-            logger.info(f"Preloading TTS model ({tts_size})...", extra={"subtype": "tts"})
-            await tts_backend.load_model_async(tts_size)
-            logger.info(f"TTS model ({tts_size}) preloaded", extra={"subtype": "tts"})
-        else:
-            logger.info(f"TTS model ({tts_size}) not cached, skipping preload")
+        cached = tts_backend._is_model_cached(tts_size)
+        logger.info(f"Preloading TTS model ({tts_size}, cached={cached})...", extra={"subtype": "tts"})
+        await tts_backend.load_model_async(tts_size)
+        logger.info(f"TTS model ({tts_size}) preloaded", extra={"subtype": "tts"})
     except Exception as e:
         logger.warning(f"TTS preload failed: {e}", exc_info=True)
 

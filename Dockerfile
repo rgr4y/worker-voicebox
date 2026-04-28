@@ -84,7 +84,7 @@ RUN if [ -n "$HUGGINGFACE_ACCESS_TOKEN" ]; then \
         HF_TOKEN="$HUGGINGFACE_ACCESS_TOKEN" \
         HF_HOME=/opt/models \
         python3 -c "from huggingface_hub import snapshot_download; \
-snapshot_download('qwen/Qwen3-TTS-12Hz-1.7B-Base'); \
+snapshot_download('Qwen/Qwen3-TTS-12Hz-1.7B-Base'); \
 snapshot_download('openai/whisper-large-v3-turbo')"; \
     fi
 
