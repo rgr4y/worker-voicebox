@@ -86,11 +86,11 @@ RUN apt-get update
 
 # --- Normal mode: FastAPI server on port 17493 ---
 FROM runtime AS final-0
-EXPOSE 17493
+EXPOSE 17494
 HEALTHCHECK --interval=60s --timeout=5s --start-period=30s --retries=3 \
-    CMD curl -f http://localhost:17493/health || exit 1
+    CMD curl -f http://localhost:17494/health || exit 1
 ENTRYPOINT ["/docker-entrypoint.sh"]
-CMD ["python3", "-m", "backend.server", "--host", "0.0.0.0", "--port", "17493", "--data-dir", "/app/data"]
+CMD ["python3", "-m", "backend.server", "--host", "0.0.0.0", "--port", "17494", "--data-dir", "/app/data"]
 
 # --- Serverless mode: RunPod handler ---
 FROM runtime AS final-1
