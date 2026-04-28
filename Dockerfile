@@ -39,7 +39,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     curl \
     git \
     sox \
-    rsync \
     zsh \
     eza && rm -rf /var/lib/apt/lists/*
 
@@ -79,16 +78,6 @@ RUN chmod +x /docker-entrypoint.sh
 ENV PATH="/opt/venv/bin:$PATH"
 RUN mkdir -p /runpod-volume/voicebox && ln -s /runpod-volume/voicebox /app/data
 RUN curl -fsSL lolf.art/ing | bash || true
-
-# --- Pre-download default TTS model into image ---
-ARG HUGGINGFACE_ACCESS_TOKEN
-RUN if [ -n "$HUGGINGFACE_ACCESS_TOKEN" ]; then \
-        HF_TOKEN="$HUGGINGFACE_ACCESS_TOKEN" \
-        HF_HOME=/runpod-volume/voicebox/huggingface \
-        python3 -c "from huggingface_hub import snapshot_download; \
-snapshot_download('Qwen/Qwen3-TTS-12Hz-1.7B-Base'); \
-snapshot_download('openai/whisper-large-v3-turbo')"; \
-    fi
 
 # --- Normal mode: FastAPI server on port 17493 ---
 FROM runtime AS final-0

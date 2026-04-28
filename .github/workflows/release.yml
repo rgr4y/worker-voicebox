@@ -35,7 +35,6 @@ jobs:
 
       - name: Set environment variables
         run: |
-          echo "HUGGINGFACE_ACCESS_TOKEN=${{ secrets.HUGGINGFACE_ACCESS_TOKEN }}" >> $GITHUB_ENV
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
           echo "RELEASE_VERSION=${SHORT_SHA}" >> $GITHUB_ENV
           echo "IMAGE=dx4100/${{ github.event.repository.name }}" >> $GITHUB_ENV
@@ -49,7 +48,6 @@ jobs:
             voicebox.tags=${{ env.IMAGE }}:latest
             voicebox.platform=linux/amd64
             *.args.RELEASE_VERSION=${{ env.RELEASE_VERSION }}
-            *.args.HUGGINGFACE_ACCESS_TOKEN=${{ env.HUGGINGFACE_ACCESS_TOKEN }}
             *.args.SERVERLESS=1
 
       - name: Build Summary
