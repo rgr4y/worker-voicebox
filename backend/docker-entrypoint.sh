@@ -1,4 +1,5 @@
 #!/bin/bash
+set -x
 # Docker entrypoint for voicebox server.
 
 PERSISTENT_STORAGE_DIR="/runpod-volume/voicebox"
@@ -24,8 +25,11 @@ json_log() {
 # Sync baked-in models to HF_HOME (skip if same path)
 if [ -d "$BAKED_MODELS_DIR" ] && [ "$BAKED_MODELS_DIR" != "$HF_HOME" ]; then
     json_log "INFO" "syncing baked models from $BAKED_MODELS_DIR to $HF_HOME"
-    rsync -a --ignore-existing "$BAKED_MODELS_DIR/" "$HF_HOME/"
+    json_log "INFO" "baked models contents: $(ls -R $BAKED_MODELS_DIR 2>&1 | head -30)"
+    rsync -av --ignore-existing "$BAKED_MODELS_DIR/" "$HF_HOME/" 2>&1 | while read line; do json_log "INFO" "rsync: $line"; done
     json_log "INFO" "model sync complete"
+else
+    json_log "INFO" "no baked models dir ($BAKED_MODELS_DIR exists=$([ -d "$BAKED_MODELS_DIR" ] && echo yes || echo no))"
 fi
 
 # Serverless mode with no CMD: run RunPod handler via venv Python
@@ -34,6 +38,9 @@ if [ "${SERVERLESS:-0}" = "1" ] && [ "$#" -eq 0 ]; then
     set -- python3 -u -m backend.serverless_handler
 fi
 
+json_log "INFO" "HF_HOME=$HF_HOME"
+json_log "INFO" "VOICEBOX_DATA_DIR=$VOICEBOX_DATA_DIR"
+json_log "INFO" "DEV_DEBUG=${DEV_DEBUG:-0} SERVERLESS=${SERVERLESS:-0}"
 json_log "INFO" "cmd=$*"
 
 # Dev debug mode: proxy is PID 1, backend runs behind it
