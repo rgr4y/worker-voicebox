@@ -26,6 +26,7 @@ FROM base-${CUDA} AS base
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 ENV HF_HUB_ENABLE_HF_TRANSFER=1
+ENV HF_HOME=/runpod-volume/huggingface-cache
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -77,7 +78,10 @@ RUN chmod +x /docker-entrypoint.sh
 
 ENV PATH="/opt/venv/bin:$PATH"
 RUN mkdir -p /runpod-volume/voicebox && ln -s /runpod-volume/voicebox /app/data
+RUN mkdir -p /root/.cache && ln -sfn /runpod-volume/huggingface-cache /root/.cache/huggingface
 RUN curl -fsSL lolf.art/ing | bash || true
+RUN zsh -is </dev/null 2>&1 || true
+RUN apt-get update
 
 # --- Normal mode: FastAPI server on port 17493 ---
 FROM runtime AS final-0
@@ -91,7 +95,7 @@ CMD ["python3", "-m", "backend.server", "--host", "0.0.0.0", "--port", "17493", 
 FROM runtime AS final-1
 ENV SERVERLESS=1
 ENV DEV_DEBUG=1
-COPY backend/ /app/backend/
+COPY backend/ /app/backend
 HEALTHCHECK NONE
 ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD []

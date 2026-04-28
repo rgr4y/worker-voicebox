@@ -50,6 +50,7 @@ def build_base_url(host: str, port: int) -> str:
 
 # Filesystem defaults
 VOICEBOX_DATA_DIR_DEFAULT = "/runpod-volume/voicebox"
+HF_HOME_DEFAULT = "/runpod-volume/huggingface-cache"
 HF_HOME_SUBDIR = "huggingface"
 DATABASE_FILENAME = "voicebox.db"
 MODEL_PREFS_FILENAME = "model_prefs.json"
@@ -184,7 +185,7 @@ _DEFAULTS = {
 _conf = {key: os.environ.get(key, default) for key, default in _DEFAULTS.items()}
 _conf[ENV_HF_HOME] = os.environ.get(
     ENV_HF_HOME,
-    os.path.join(_conf[ENV_VOICEBOX_DATA_DIR], HF_HOME_SUBDIR),
+    HF_HOME_DEFAULT,
 )
 
 VOICEBOX_PORT = int(_conf[ENV_VOICEBOX_PORT])

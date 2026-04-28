@@ -39,12 +39,6 @@ _gql "$(jq -n --arg id "$TEMPLATE_ID" --arg img "$FULL_IMAGE" --arg templateId "
       env: [
         {key: "HUGGINGFACE_TOKEN", value: "{{ RUNPOD_SECRET_HF_TOKEN }}"},
         {key: "HF_TOKEN", value: "{{ RUNPOD_SECRET_HF_TOKEN }}"},
-        {key: "HF_HOME", value: "/runpod-volume/huggingface-cache/hub"},
-        {key: "HF_DATASETS_CACHE", value: "/runpod-volume/huggingface-cache/datasets"},
-        {key: "HUGGINGFACE_HUB_CACHE", value: "/runpod-volume/huggingface-cache/hub"},
-        {key: "TRUST_REMOTE_CODE", value: "true"},
-        {key: "ENABLE_PREFIX_CACHING", value: "true"},
-        {key: "MODEL_NAME", value: "{{ MODEL_NAME }}"},
       ]
     }
   }

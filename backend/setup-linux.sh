@@ -4,9 +4,9 @@ set -euo pipefail
 # Voicebox Linux setup script
 # Installs the backend server with CUDA support on x86_64 Linux
 
-INSTALL_DIR="/opt/voicebox"
-DATA_DIR="/var/lib/voicebox"
-VENV_DIR="$INSTALL_DIR/venv"
+INSTALL_DIR="/app"
+DATA_DIR="/app/data"
+VENV_DIR="/opt/venv"
 SERVICE_USER="voicebox"
 PYTHON_MIN="3.10"
 CUDA_MIN="11.8"
