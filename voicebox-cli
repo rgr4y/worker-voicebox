@@ -42,10 +42,13 @@ def resolve_base_url(args):
     """Determine server URL from env vars and CLI flags."""
     if os.environ.get("VOICEBOX_URL"):
         return os.environ["VOICEBOX_URL"].rstrip("/")
-    host = os.environ.get("VOICEBOX_HOST", DEFAULT_HOST)
+    host = (getattr(args, "host", None)
+            or os.environ.get("VOICEBOX_HOST", DEFAULT_HOST))
     port = os.environ.get("VOICEBOX_PORT", str(DEFAULT_PORT))
     if hasattr(args, "port") and args.port != DEFAULT_PORT:
         port = str(args.port)
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"
     return f"http://{host}:{port}"
 
 
@@ -683,12 +686,14 @@ def cmd_generate(args):
     """Generate speech from text."""
     if args.text:
         text = args.text
+    elif args.words:
+        text = " ".join(args.words)
     elif args.file:
         text = Path(args.file).read_text().strip()
     elif not sys.stdin.isatty():
         text = sys.stdin.read().strip()
     else:
-        args.subparser.error("one of --text, --file, or stdin is required")
+        args.subparser.error("one of --text, --file, positional text, or stdin is required")
 
     if not text:
         print("Error: text is empty.", file=sys.stderr)
@@ -984,23 +989,12 @@ def resolve_profile(base_url, voice_name):
         save_cli_config(config)
         return profile
     else:
-        print("Available voices:")
-        for i, p in enumerate(profiles, 1):
-            print(f"  {i}. {p['name']} ({p['language']})")
-        print()
-        while True:
-            choice = input(f"Choose a voice [1-{len(profiles)}]: ").strip()
-            try:
-                idx = int(choice) - 1
-                if 0 <= idx < len(profiles):
-                    profile = profiles[idx]
-                    config = load_cli_config()
-                    config["last_voice"] = profile["name"]
-                    save_cli_config(config)
-                    return profile
-            except ValueError:
-                pass
-            print("Invalid choice, try again.")
+        profile = profiles[-1]
+        print(f"Using latest voice: {profile['name']}")
+        config = load_cli_config()
+        config["last_voice"] = profile["name"]
+        save_cli_config(config)
+        return profile
 
 
 # --- Main ---
@@ -1012,6 +1006,7 @@ def main():
         epilog="Environment: VOICEBOX_URL, VOICEBOX_HOST, VOICEBOX_PORT",
     )
     parser.add_argument("--url", default=None, help="Server URL (overrides env vars)")
+    parser.add_argument("--host", "-H", default=None, help="Server host (e.g. 0.0.0.0, ::, 192.168.1.5)")
     sub = parser.add_subparsers(dest="command")
 
     # server
@@ -1033,6 +1028,8 @@ def main():
 
     # generate
     p_gen = sub.add_parser("generate", aliases=["gen", "say"], help="Generate speech")
+    p_gen.add_argument("--url", default=None, help="Server URL (overrides env vars)")
+    p_gen.add_argument("--host", "-H", default=None, help="Server host")
     p_gen.add_argument("--voice", "-v", help="Voice name (interactive picker if omitted)")
     p_gen.add_argument("--text", "-t", help="Text to speak")
     p_gen.add_argument("--file", "-f", help="Read text from a file")
@@ -1041,6 +1038,7 @@ def main():
     p_gen.add_argument("--seed", "-s", type=int, help="Random seed")
     p_gen.add_argument("--instruct", help="Style instruction (e.g. 'speak slowly')")
     p_gen.add_argument("--no-open", action="store_true", help="Don't open file after generating")
+    p_gen.add_argument("words", nargs="*", help="Text to speak (positional, alternative to --text)")
     p_gen.set_defaults(subparser=p_gen)
 
     # health

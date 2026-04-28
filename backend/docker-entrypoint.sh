@@ -29,14 +29,11 @@ json_log "INFO" "cmd=$*"
 # /health always returns 200 so RunPod keeps the pod alive
 # Use /_proxy/stop, /_proxy/start, /_proxy/restart to manage backend
 if [ "${DEV_DEBUG:-0}" = "1" ]; then
-    json_log "INFO" "dev debug mode — proxy on :17493, backend on :17494"
-    export PROXY_PORT=17493
-    export BACKEND_PORT=17494
-    # Rewrite port in CMD args so backend listens on 17494
-    REWRITTEN_CMD=$(echo "$*" | sed 's/--port 17493/--port 17494/g')
-    export BACKEND_CMD="$REWRITTEN_CMD"
-    # Also override for serverless handler's hardcoded port
-    export VOICEBOX_PORT=17494
+    json_log "INFO" "dev debug mode — proxy on :17494, backend on :17493"
+    export PROXY_PORT=17494
+    export BACKEND_PORT=17493
+    export BACKEND_CMD="$*"
+    export VOICEBOX_PORT=17493
     exec python3 -u -m backend.proxy
 fi
 
