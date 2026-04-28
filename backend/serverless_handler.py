@@ -55,7 +55,7 @@ def _start_server():
     from backend import config
     from backend.main import app
 
-    config.set_data_dir("/app/data")
+    config.set_data_dir(os.environ.get("VOICEBOX_DATA_DIR", "/runpod-volume/voicebox"))
 
     def _run():
         uvicorn.run(app, host=_HOST, port=_PORT, log_level="info")

@@ -771,7 +771,7 @@ def cmd_generate(args):
             Path(wav_path).unlink()
             print(f"Saved: {output}")
 
-    if not args.no_open:
+    if not args.no_open and shutil.which("open"):
         subprocess.run(["open", output])
 
 
