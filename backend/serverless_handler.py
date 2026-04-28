@@ -14,7 +14,7 @@ Local testing:
 import os
 
 # Must be set before any backend imports so backends disable idle timers at module load time
-os.environ[ENV_SERVERLESS] = "1"
+os.environ["SERVERLESS"] = "1"
 
 import time
 import logging
@@ -122,9 +122,9 @@ def handler(job: dict) -> dict:
 
     path = inp.get("path")
     if not path:
-        return {"error": "Missing 'path' in job input"}
+        return {"error": SERVERLESS_MISSING_PATH_MESSAGE}
 
-    method = inp.get("method", "POST").upper()
+    method = inp.get("method", SERVERLESS_HTTP_METHOD_DEFAULT).upper()
     body = inp.get("body")
     params = inp.get("params")
     headers = inp.get("headers", {})
@@ -136,17 +136,13 @@ def handler(job: dict) -> dict:
             response = client.request(
                 method=method,
                 url=url,
-                json=body if method in ("POST", "PUT", "PATCH") else None,
+                json=body if method in SERVERLESS_JSON_METHODS else None,
                 params=params,
                 headers=headers,
             )
 
         content_type = response.headers.get("content-type", "")
-        is_binary = (
-            "audio/" in content_type
-            or "application/octet-stream" in content_type
-            or "application/zip" in content_type
-        )
+        is_binary = any(ct in content_type for ct in SERVERLESS_BINARY_CONTENT_TYPES)
 
         if is_binary:
             return {
